@@ -71,4 +71,18 @@ class MachineryDao {
     );
     return result.first['next_order'] as int;
   }
+
+  Future<List<Machinery>> getAllMachineryWithStats() async {
+    final db = await _db.database;
+    final result = await db.rawQuery('''
+      SELECT m.*,
+        (SELECT COUNT(*) FROM billing_entries WHERE billing_entries.machinery_id = m.machinery_id) as entry_count,
+        (SELECT COALESCE(SUM(be.amount), 0)
+         FROM billing_entries be
+         WHERE be.machinery_id = m.machinery_id) as total_amount
+      FROM machinery m
+      ORDER BY m.machinery_type ASC, m.display_label ASC
+    ''');
+    return result.map((r) => Machinery.fromMap(r)).toList();
+  }
 }

@@ -22,10 +22,36 @@ class _ImportPreviewScreenState extends State<ImportPreviewScreen> {
   ImportResult? _result;
   String _schemeName = '';
 
+  Map<String, _MachineryValidationSummary> get _machineryValidationSummary {
+    final summary = <String, _MachineryValidationSummary>{};
+
+    for (final scheme in widget.parsedSchemes) {
+      for (final set in scheme.sets) {
+        for (final machinery in set.machineryList) {
+          final key = machinery.displayLabel;
+          final current =
+              summary[key] ?? const _MachineryValidationSummary(machineryCount: 0, entryCount: 0, totalAmount: 0);
+          final entries = machinery.entries.length;
+          final amount =
+              machinery.entries.fold<double>(0.0, (sum, e) => sum + e.amount);
+
+          summary[key] = _MachineryValidationSummary(
+            machineryCount: current.machineryCount + 1,
+            entryCount: current.entryCount + entries,
+            totalAmount: current.totalAmount + amount,
+          );
+        }
+      }
+    }
+
+    final sortedKeys = summary.keys.toList()..sort();
+    return {for (final key in sortedKeys) key: summary[key]!};
+  }
+
   @override
   void initState() {
     super.initState();
-    if (widget.parsedSchemes.isNotEmpty) {
+    if (widget.parsedSchemes.length == 1) {
       _schemeName = widget.parsedSchemes.first.schemeName;
     }
   }
@@ -61,9 +87,9 @@ class _ImportPreviewScreenState extends State<ImportPreviewScreen> {
 
     try {
       final importService = ImportService();
-      // Update scheme name if changed
-      for (final s in widget.parsedSchemes) {
-        s.schemeName = _schemeName.isNotEmpty ? _schemeName : s.schemeName;
+      // Update scheme name only for single-scheme imports
+      if (widget.parsedSchemes.length == 1 && _schemeName.trim().isNotEmpty) {
+        widget.parsedSchemes.first.schemeName = _schemeName.trim();
       }
       final result = await importService.commitImport(widget.parsedSchemes);
 
@@ -109,16 +135,26 @@ class _ImportPreviewScreenState extends State<ImportPreviewScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Scheme name editable
-          TextField(
-            decoration: const InputDecoration(
-              labelText: 'Scheme Name',
-              border: OutlineInputBorder(),
-              helperText: 'You can change the scheme name before importing',
+          // Scheme name editable for single-scheme imports only
+          if (widget.parsedSchemes.length == 1)
+            TextField(
+              decoration: const InputDecoration(
+                labelText: 'Scheme Name',
+                border: OutlineInputBorder(),
+                helperText: 'You can change the scheme name before importing',
+              ),
+              controller: TextEditingController(text: _schemeName),
+              onChanged: (v) => _schemeName = v,
+            )
+          else
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(12),
+                child: Text(
+                  'Multiple schemes detected. Scheme names will be imported from sheet names.',
+                ),
+              ),
             ),
-            controller: TextEditingController(text: _schemeName),
-            onChanged: (v) => _schemeName = v,
-          ),
           const SizedBox(height: 16),
 
           // Summary
@@ -135,6 +171,41 @@ class _ImportPreviewScreenState extends State<ImportPreviewScreen> {
                   _summaryRow('Machinery', _totalMachinery.toString()),
                   _summaryRow('Billing Entries', _totalEntries.toString()),
                   _summaryRow('Total Amount', CurrencyUtils.formatAmount(_totalAmount)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Validation by machinery
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Validation by Machinery',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 12),
+                  ..._machineryValidationSummary.entries.map((entry) {
+                    final value = entry.value;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(entry.key,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${value.machineryCount} machinery · ${value.entryCount} entries · ${CurrencyUtils.formatAmount(value.totalAmount)}',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
                 ],
               ),
             ),
@@ -321,4 +392,16 @@ class _ImportPreviewScreenState extends State<ImportPreviewScreen> {
       ),
     );
   }
+}
+
+class _MachineryValidationSummary {
+  final int machineryCount;
+  final int entryCount;
+  final double totalAmount;
+
+  const _MachineryValidationSummary({
+    required this.machineryCount,
+    required this.entryCount,
+    required this.totalAmount,
+  });
 }

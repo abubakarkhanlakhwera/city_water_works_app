@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/database/daos/settings_dao.dart';
 import '../../core/database/daos/machinery_types_dao.dart';
+import '../../core/database/daos/users_dao.dart';
 import '../../core/models/machinery_type.dart';
 import '../../core/services/backup_service.dart';
 import '../../shared/theme/app_colors.dart';
@@ -9,8 +10,10 @@ import '../backup/backup_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final VoidCallback? onThemeChanged;
+  final VoidCallback? onLogout;
+  final String? currentUsername;
 
-  const SettingsScreen({super.key, this.onThemeChanged});
+  const SettingsScreen({super.key, this.onThemeChanged, this.onLogout, this.currentUsername});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -19,6 +22,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _settingsDao = SettingsDao();
   final _typesDao = MachineryTypesDao();
+  final _usersDao = UsersDao();
   final _backupService = BackupService();
 
   bool _isDarkMode = false;
@@ -158,6 +162,129 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _changePassword() async {
+    final username = widget.currentUsername;
+    if (username == null || username.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No active user found')),
+      );
+      return;
+    }
+
+    final currentCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    bool isSubmitting = false;
+
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocalState) => AlertDialog(
+            title: const Text('Change Password'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: currentCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Current Password',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: newCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'New Password',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: confirmCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirm New Password',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting ? null : () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        final currentPassword = currentCtrl.text;
+                        final newPassword = newCtrl.text;
+                        final confirmPassword = confirmCtrl.text;
+
+                        if (currentPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('All fields are required')),
+                          );
+                          return;
+                        }
+                        if (newPassword.length < 6) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('New password must be at least 6 characters')),
+                          );
+                          return;
+                        }
+                        if (newPassword != confirmPassword) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('New password and confirm password do not match')),
+                          );
+                          return;
+                        }
+
+                        setLocalState(() => isSubmitting = true);
+                        final ok = await _usersDao.changePassword(
+                          username: username,
+                          currentPassword: currentPassword,
+                          newPassword: newPassword,
+                        );
+                        if (!ctx.mounted) return;
+                        setLocalState(() => isSubmitting = false);
+
+                        if (!ok) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Current password is incorrect')),
+                          );
+                          return;
+                        }
+
+                        Navigator.pop(ctx, true);
+                      },
+                child: Text(isSubmitting ? 'Updating...' : 'Update'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    currentCtrl.dispose();
+    newCtrl.dispose();
+    confirmCtrl.dispose();
+
+    if (changed == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password updated successfully')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -221,6 +348,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 20),
 
+                // Account
+                Text('Account', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.lock_reset, color: AppColors.primary),
+                        title: const Text('Change Password'),
+                        subtitle: Text('User: ${widget.currentUsername ?? 'admin'}'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: _changePassword,
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(Icons.logout, color: AppColors.error),
+                        title: const Text('Logout', style: TextStyle(color: AppColors.error)),
+                        subtitle: const Text('Sign out and return to login'),
+                        onTap: widget.onLogout,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
                 // Machinery Types
                 Row(
                   children: [
@@ -261,7 +413,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       ListTile(
                         leading: const Icon(Icons.water_drop, color: AppColors.primary),
-                        title: const Text('City Water Works'),
+                        title: const Text('Water Supply Scheme History'),
                         subtitle: const Text('Machinery Billing & Record Management'),
                       ),
                       const Divider(height: 1),

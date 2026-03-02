@@ -1,5 +1,5 @@
 class Constants {
-  static const String appName = 'City Water Works';
+  static const String appName = 'Water Supply Scheme History';
   static const String appVersion = '1.0.0';
   static const String dateFormat = 'DD-MM-YYYY';
   static const String defaultCurrency = 'Rs.';

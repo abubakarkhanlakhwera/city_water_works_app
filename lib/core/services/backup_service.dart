@@ -9,7 +9,17 @@ class BackupService {
 
   String _nowFormatted() {
     final now = DateTime.now();
-    return '${now.day.toString().padLeft(2, '0')}-${now.month.toString().padLeft(2, '0')}-${now.year}_${now.hour.toString().padLeft(2, '0')}-${now.minute.toString().padLeft(2, '0')}';
+    return '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}-${now.minute.toString().padLeft(2, '0')}-${now.second.toString().padLeft(2, '0')}';
+  }
+
+  Future<Directory> _getBackupDirectory() async {
+    final downloadsDir = await getDownloadsDirectory();
+    final baseDir = downloadsDir ?? await getApplicationDocumentsDirectory();
+    final backupDir = Directory('${baseDir.path}/backups');
+    if (!await backupDir.exists()) {
+      await backupDir.create(recursive: true);
+    }
+    return backupDir;
   }
 
   /// Create a backup file (.cww = zip of DB + metadata)
@@ -44,13 +54,8 @@ class BackupService {
     final zipBytes = ZipEncoder().encode(archive);
 
     // Save backup file
-    final dir = await getApplicationDocumentsDirectory();
-    final backupDir = Directory('${dir.path}/backups');
-    if (!await backupDir.exists()) {
-      await backupDir.create(recursive: true);
-    }
-
-    final filename = 'CityWaterWorks_Backup_${_nowFormatted()}.cww';
+    final backupDir = await _getBackupDirectory();
+    final filename = 'WaterSupplyMachineryHistory_Backup_${_nowFormatted()}.cww';
     final backupFile = File('${backupDir.path}/$filename');
     await backupFile.writeAsBytes(zipBytes!);
 
@@ -110,10 +115,7 @@ class BackupService {
 
   /// List available local backups
   Future<List<BackupInfo>> listBackups() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final backupDir = Directory('${dir.path}/backups');
-
-    if (!await backupDir.exists()) return [];
+    final backupDir = await _getBackupDirectory();
 
     final files = await backupDir
         .list()

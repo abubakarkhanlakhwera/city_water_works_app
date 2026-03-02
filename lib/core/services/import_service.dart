@@ -90,6 +90,9 @@ class ImportService {
   static final motorRegex = RegExp(r'Motor\s*(\d+)\s*/?\s*HP\s+(.+)', caseSensitive: false);
   static final pumpRegex = RegExp(r'Pump\s*(\d+x\d+)', caseSensitive: false);
   static final transformerRegex = RegExp(r'Transformer\s*(\d+)\s*[Kk][Vv]', caseSensitive: false);
+  static final setNumberRegex =
+      RegExp(r'(?:set\s*no\.?|no\.?)\s*(\d+)', caseSensitive: false);
+  static final tubewellNumberRegex = RegExp(r'tubewell\s*no\.?\s*(\d+)', caseSensitive: false);
 
   // Sheet name to scheme name mapping
   static final Map<String, String> sheetNameMapping = {
@@ -109,12 +112,14 @@ class ImportService {
     final List<ParsedScheme> schemes = [];
 
     for (final sheetName in excel.tables.keys) {
-      if (sheetName.toLowerCase() == 'list') continue; // Skip metadata sheets
+      final normalizedSheetName = sheetName.trim();
+      if (normalizedSheetName.toLowerCase() == 'list') continue; // Skip metadata sheets
 
       final sheet = excel.tables[sheetName]!;
       if (sheet.maxRows < 2) continue;
 
-      final schemeName = sheetNameMapping[sheetName] ?? '$sheetName Water Works';
+      final schemeName =
+          sheetNameMapping[normalizedSheetName] ?? '$normalizedSheetName Water Works';
       final parsedScheme = ParsedScheme(schemeName: schemeName, sets: []);
 
       // Parse the sheet to find sets and machinery
@@ -130,9 +135,9 @@ class ImportService {
   }
 
   List<ParsedSet> _parseSheet(Sheet sheet) {
-    final List<ParsedSet> sets = [];
+    final Map<int, ParsedSet> setMap = {};
     final rows = sheet.rows;
-    if (rows.isEmpty) return sets;
+    if (rows.isEmpty) return [];
 
     // Strategy: scan for set headers
     // Look for rows containing "Set No." pattern
@@ -148,7 +153,7 @@ class ImportService {
         final cell = row[col];
         if (cell != null && cell.value != null) {
           final text = cell.value.toString().trim();
-          if (text.toLowerCase().contains('set no')) {
+          if (setNumberRegex.hasMatch(text)) {
             setStartCol = col;
             setHeaderText = text;
             break;
@@ -159,9 +164,10 @@ class ImportService {
       if (setHeaderText != null) {
         // Found a set header row — parse it
         final parsedSetsFromRow = _parseSetsFromRow(rows, currentRow);
-        sets.addAll(parsedSetsFromRow);
-        // Skip ahead past data rows
-        currentRow += _findEndOfData(rows, currentRow + 1) + 1;
+        for (final parsed in parsedSetsFromRow) {
+          _mergeParsedSet(setMap, parsed);
+        }
+        currentRow++;
       } else {
         // Also check if row has machinery labels directly (alternate format)
         bool hasMachineryLabel = false;
@@ -176,11 +182,13 @@ class ImportService {
           }
         }
 
-        if (hasMachineryLabel && sets.isEmpty) {
+        if (hasMachineryLabel && setMap.isEmpty) {
           // Machinery labels without a set header — create a default set
           final parsedSets = _parseMachineryRow(rows, currentRow);
-          sets.addAll(parsedSets);
-          currentRow += _findEndOfData(rows, currentRow + 1) + 1;
+          for (final parsed in parsedSets) {
+            _mergeParsedSet(setMap, parsed);
+          }
+          currentRow++;
         } else {
           currentRow++;
         }
@@ -188,11 +196,63 @@ class ImportService {
     }
 
     // If no sets found from structured parsing, try a simpler approach
-    if (sets.isEmpty) {
-      return _parseSimpleFormat(rows);
+    if (setMap.isEmpty) {
+      final fallbackSets = _parseSimpleFormat(rows);
+      final fallbackMap = <int, ParsedSet>{};
+      for (final parsed in fallbackSets) {
+        _mergeParsedSet(fallbackMap, parsed);
+      }
+      final orderedFallback = fallbackMap.values.toList()
+        ..sort((a, b) => a.setNumber.compareTo(b.setNumber));
+      return orderedFallback;
     }
 
-    return sets;
+    final orderedSets = setMap.values.toList()
+      ..sort((a, b) => a.setNumber.compareTo(b.setNumber));
+    return orderedSets;
+  }
+
+  void _mergeParsedSet(Map<int, ParsedSet> setMap, ParsedSet incoming) {
+    final existing = setMap[incoming.setNumber];
+    if (existing == null) {
+      setMap[incoming.setNumber] = incoming;
+      return;
+    }
+
+    for (final incomingMachinery in incoming.machineryList) {
+      final existingIndex = existing.machineryList.indexWhere((m) =>
+          m.machineryType.toLowerCase() == incomingMachinery.machineryType.toLowerCase() &&
+          m.displayLabel.trim().toLowerCase() == incomingMachinery.displayLabel.trim().toLowerCase());
+
+      if (existingIndex == -1) {
+        existing.machineryList.add(incomingMachinery);
+        continue;
+      }
+
+      final target = existing.machineryList[existingIndex];
+      if ((target.brand == null || target.brand!.trim().isEmpty) &&
+          incomingMachinery.brand != null &&
+          incomingMachinery.brand!.trim().isNotEmpty) {
+        target.brand = incomingMachinery.brand;
+      }
+
+      if (target.specs.isEmpty && incomingMachinery.specs.isNotEmpty) {
+        target.specs = incomingMachinery.specs;
+      }
+
+      final existingKeys = target.entries
+          .map((e) => '${e.serialNo}|${e.date}|${e.voucherNo ?? ''}|${e.amount.toStringAsFixed(2)}')
+          .toSet();
+
+      for (final incomingEntry in incomingMachinery.entries) {
+        final key =
+            '${incomingEntry.serialNo}|${incomingEntry.date}|${incomingEntry.voucherNo ?? ''}|${incomingEntry.amount.toStringAsFixed(2)}';
+        if (!existingKeys.contains(key)) {
+          target.entries.add(incomingEntry);
+          existingKeys.add(key);
+        }
+      }
+    }
   }
 
   List<ParsedSet> _parseSetsFromRow(List<List<Data?>> rows, int headerRow) {
@@ -205,7 +265,7 @@ class ImportService {
       final cell = row[col];
       if (cell != null && cell.value != null) {
         final text = cell.value.toString().trim();
-        if (text.toLowerCase().contains('set no')) {
+        if (setNumberRegex.hasMatch(text)) {
           setPositions.add(MapEntry(col, text));
         }
       }
@@ -218,8 +278,7 @@ class ImportService {
       final setHeader = setPositions[i].value;
 
       // Extract set number
-      final setNumMatch = RegExp(r'Set\s*No\.?\s*(\d+)', caseSensitive: false).firstMatch(setHeader);
-      final setNumber = setNumMatch != null ? int.tryParse(setNumMatch.group(1)!) ?? (i + 1) : (i + 1);
+      final setNumber = _extractSetNumber(setHeader, fallback: i + 1);
 
       final parsedSet = ParsedSet(
         setNumber: setNumber,
@@ -234,11 +293,21 @@ class ImportService {
 
         // Find data start row (skip column headers row)
         int dataStartRow = headerRow + 3; // header -> machinery -> col headers -> data
+        final headerColsRow = headerRow + 2 < rows.length ? rows[headerRow + 2] : <Data?>[];
+        final sharedSerialCol = _findSharedSerialColumn(headerColsRow, startCol, endCol);
 
-        // Parse entries for each machinery
-        for (final mach in machineryList) {
-          final entries = _parseEntries(rows, dataStartRow, mach.startCol, mach.endCol);
-          mach.machinery.entries = entries;
+        // Parse grouped entries with shared serial column (Excel sample format)
+        if (sharedSerialCol != null) {
+          final grouped = _parseGroupedEntries(rows, dataStartRow, machineryList, sharedSerialCol);
+          for (int idx = 0; idx < machineryList.length; idx++) {
+            machineryList[idx].machinery.entries = grouped[idx];
+          }
+        } else {
+          // Fallback to per-machinery block parsing
+          for (final mach in machineryList) {
+            final entries = _parseEntries(rows, dataStartRow, mach.startCol, mach.endCol);
+            mach.machinery.entries = entries;
+          }
         }
 
         parsedSet.machineryList = machineryList.map((m) => m.machinery).toList();
@@ -257,10 +326,19 @@ class ImportService {
     final machineryList = _parseMachineryInRange(row, 0, row.length);
 
     int dataStartRow = machineryRowIndex + 2; // machinery -> col headers -> data
+    final headerColsRow = machineryRowIndex + 1 < rows.length ? rows[machineryRowIndex + 1] : <Data?>[];
+    final sharedSerialCol = _findSharedSerialColumn(headerColsRow, 0, row.length);
 
-    for (final mach in machineryList) {
-      final entries = _parseEntries(rows, dataStartRow, mach.startCol, mach.endCol);
-      mach.machinery.entries = entries;
+    if (sharedSerialCol != null) {
+      final grouped = _parseGroupedEntries(rows, dataStartRow, machineryList, sharedSerialCol);
+      for (int idx = 0; idx < machineryList.length; idx++) {
+        machineryList[idx].machinery.entries = grouped[idx];
+      }
+    } else {
+      for (final mach in machineryList) {
+        final entries = _parseEntries(rows, dataStartRow, mach.startCol, mach.endCol);
+        mach.machinery.entries = entries;
+      }
     }
 
     parsedSet.machineryList = machineryList.map((m) => m.machinery).toList();
@@ -301,7 +379,7 @@ class ImportService {
       return ParsedMachinery(
         machineryType: 'Motor',
         brand: motorMatch.group(2)?.trim(),
-        specs: {'hp': motorMatch.group(1)!},
+        specs: {'Horsepower': '${motorMatch.group(1)!}HP'},
         displayLabel: text,
         entries: [],
       );
@@ -312,7 +390,7 @@ class ImportService {
     if (pumpMatch != null) {
       return ParsedMachinery(
         machineryType: 'Pump',
-        specs: {'size': pumpMatch.group(1)!},
+        specs: {'Size': pumpMatch.group(1)!},
         displayLabel: text,
         entries: [],
       );
@@ -323,7 +401,7 @@ class ImportService {
     if (transMatch != null) {
       return ParsedMachinery(
         machineryType: 'Transformer',
-        specs: {'kva': transMatch.group(1)!},
+        specs: {'kVA Rating': '${transMatch.group(1)!}Kv'},
         displayLabel: text,
         entries: [],
       );
@@ -393,6 +471,74 @@ class ImportService {
     return entries;
   }
 
+  int? _findSharedSerialColumn(List<Data?> headerRow, int startCol, int endCol) {
+    final upper = endCol < headerRow.length ? endCol : headerRow.length;
+    for (int c = startCol; c < upper; c++) {
+      final cell = headerRow[c];
+      final text = cell?.value?.toString().trim().toLowerCase() ?? '';
+      if (text.contains('sr.no') || text.contains('sr no') || text == 'sr.no' || text == 'sr') {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  List<List<ParsedEntry>> _parseGroupedEntries(
+    List<List<Data?>> rows,
+    int startRow,
+    List<_MachineryWithCols> machineryList,
+    int serialCol,
+  ) {
+    final grouped = List.generate(machineryList.length, (_) => <ParsedEntry>[]);
+    int emptyRowCount = 0;
+
+    for (int r = startRow; r < rows.length; r++) {
+      final row = rows[r];
+      final serialNo = _parseInt(serialCol < row.length ? row[serialCol]?.value : null);
+      bool rowHasAnyMachineryData = false;
+
+      for (int i = 0; i < machineryList.length; i++) {
+        final mach = machineryList[i];
+        final dataStartCol = mach.startCol == serialCol ? mach.startCol + 1 : mach.startCol;
+        final dateVal = dataStartCol < row.length ? row[dataStartCol]?.value : null;
+        final voucherVal = dataStartCol + 1 < row.length ? row[dataStartCol + 1]?.value : null;
+        final amountVal = dataStartCol + 2 < row.length ? row[dataStartCol + 2]?.value : null;
+
+        final date = _parseDate(dateVal);
+        final voucher = _parseInt(voucherVal);
+        final amount = _parseDouble(amountVal);
+
+        final hasData = date != null || voucher != null || amount != null;
+        if (!hasData) continue;
+
+        rowHasAnyMachineryData = true;
+        final inferredSerial = serialNo ?? (grouped[i].length + 1);
+        String? error;
+        if (date == null) error = 'Invalid date';
+        if (amount == null) error = (error != null ? '$error; ' : '') + 'Invalid amount';
+
+        grouped[i].add(ParsedEntry(
+          serialNo: inferredSerial,
+          date: date ?? '',
+          voucherNo: voucher,
+          amount: amount ?? 0.0,
+          regPageNo: null,
+          error: error,
+          rowNumber: r + 1,
+        ));
+      }
+
+      if (rowHasAnyMachineryData) {
+        emptyRowCount = 0;
+      } else {
+        emptyRowCount++;
+        if (emptyRowCount >= 3) break;
+      }
+    }
+
+    return grouped;
+  }
+
   int _findEndOfData(List<List<Data?>> rows, int startRow) {
     int emptyRowCount = 0;
     for (int r = startRow; r < rows.length; r++) {
@@ -452,9 +598,9 @@ class ImportService {
         if (r > 0) {
           for (final cell in rows[r - 1]) {
             if (cell != null && cell.value != null) {
-              final match = RegExp(r'Set\s*No\.?\s*(\d+)', caseSensitive: false).firstMatch(cell.value.toString());
-              if (match != null) {
-                setNum = int.tryParse(match.group(1)!) ?? setNum;
+              final parsed = _extractSetNumber(cell.value.toString(), fallback: setNum);
+              if (parsed != setNum) {
+                setNum = parsed;
                 break;
               }
             }
@@ -472,20 +618,94 @@ class ImportService {
     return sets;
   }
 
+  int _extractSetNumber(String headerText, {required int fallback}) {
+    final tubewellMatch = tubewellNumberRegex.firstMatch(headerText);
+    if (tubewellMatch != null) {
+      final n = int.tryParse(tubewellMatch.group(1)!);
+      if (n != null) return n;
+    }
+
+    final allNoMatches = setNumberRegex.allMatches(headerText).toList();
+    if (allNoMatches.isNotEmpty) {
+      final last = allNoMatches.last;
+      final n = int.tryParse(last.group(1)!);
+      if (n != null) return n;
+    }
+
+    return fallback;
+  }
+
   /// Parse date from various formats to DD-MM-YYYY
   String? _parseDate(dynamic value) {
     if (value == null) return null;
 
+    String formatDayFirst(DateTime date) {
+      return '${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}';
+    }
+
     if (value is DateTime) {
-      return '${value.day.toString().padLeft(2, '0')}-${value.month.toString().padLeft(2, '0')}-${value.year}';
+      var day = value.day;
+      var month = value.month;
+
+      // Enforce day-first interpretation for ambiguous excel dates like 6/4/2023.
+      // If both parts are <= 12, swap to prefer DD/MM over MM/DD.
+      if (day <= 12 && month <= 12) {
+        final temp = day;
+        day = month;
+        month = temp;
+      }
+
+      return '${day.toString().padLeft(2, '0')}-${month.toString().padLeft(2, '0')}-${value.year}';
     }
 
     if (value is DateCellValue) {
-      return '${value.day.toString().padLeft(2, '0')}-${value.month.toString().padLeft(2, '0')}-${value.year}';
+      var day = value.day;
+      var month = value.month;
+
+      // Enforce day-first interpretation for ambiguous excel dates like 6/4/2023.
+      if (day <= 12 && month <= 12) {
+        final temp = day;
+        day = month;
+        month = temp;
+      }
+
+      return '${day.toString().padLeft(2, '0')}-${month.toString().padLeft(2, '0')}-${value.year}';
     }
 
-    final str = value.toString().trim();
+    if (value is TextCellValue) {
+      return _parseDate(value.value);
+    }
+
+    if (value is IntCellValue) {
+      final numericDate = value.value.toDouble();
+      if (numericDate > 30000 && numericDate < 100000) {
+        final date = DateTime(1899, 12, 30).add(Duration(days: numericDate.toInt()));
+        return formatDayFirst(date);
+      }
+    }
+
+    if (value is DoubleCellValue) {
+      final numericDate = value.value;
+      if (numericDate > 30000 && numericDate < 100000) {
+        final date = DateTime(1899, 12, 30).add(Duration(days: numericDate.toInt()));
+        return formatDayFirst(date);
+      }
+    }
+
+    var str = value.toString().trim();
     if (str.isEmpty) return null;
+
+    // If time is attached (e.g. "2023-04-06 00:00:00"), keep only date part.
+    str = str.split(' ').first.trim();
+
+    // Normalize common separator variations.
+    str = str.replaceAll('.', '-').replaceAll('/', '-');
+
+    // Try ISO parser as fallback for machine-formatted dates.
+    final parsedByIso = DateTime.tryParse(str);
+    if (parsedByIso != null) {
+      return formatDayFirst(parsedByIso);
+    }
 
     // Try DD-MM-YYYY
     final dmy = RegExp(r'^(\d{1,2})-(\d{1,2})-(\d{4})$').firstMatch(str);
@@ -507,10 +727,12 @@ class ImportService {
       return '${ymd.group(3)!.padLeft(2, '0')}-${ymd.group(2)!.padLeft(2, '0')}-${ymd.group(1)}';
     }
 
-    // Try DD/MM/YYYY
-    final dmySlash = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$').firstMatch(str);
-    if (dmySlash != null) {
-      return '${dmySlash.group(1)!.padLeft(2, '0')}-${dmySlash.group(2)!.padLeft(2, '0')}-${dmySlash.group(3)}';
+    // Try D-M-YY (after separator normalization)
+    final dmyShortAlt = RegExp(r'^(\d{1,2})-(\d{1,2})-(\d{2})$').firstMatch(str);
+    if (dmyShortAlt != null) {
+      final year = int.parse(dmyShortAlt.group(3)!);
+      final fullYear = year > 50 ? 1900 + year : 2000 + year;
+      return '${dmyShortAlt.group(1)!.padLeft(2, '0')}-${dmyShortAlt.group(2)!.padLeft(2, '0')}-$fullYear';
     }
 
     // Excel numeric date (days since 1899-12-30)

@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.citywaterworks" "\0"
-            VALUE "FileDescription", "city_water_works_app" "\0"
+            VALUE "FileDescription", "Water Supply Scheme History" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "city_water_works_app" "\0"
+            VALUE "InternalName", "Water Supply Scheme History" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.citywaterworks. All rights reserved." "\0"
-            VALUE "OriginalFilename", "city_water_works_app.exe" "\0"
-            VALUE "ProductName", "city_water_works_app" "\0"
+            VALUE "OriginalFilename", "WaterSupplySchemeHistory.exe" "\0"
+            VALUE "ProductName", "Water Supply Scheme History" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

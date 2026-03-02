@@ -62,7 +62,7 @@ class _MachineryFormState extends State<MachineryForm> {
       MachineryType(
         typeName: 'Transformer',
         attributes: [
-          MachineryAttribute(name: 'kVA Rating', inputType: 'dropdown', options: ['25kVA', '50kVA', '100kVA', '200kVA'], required: true),
+          MachineryAttribute(name: 'kVA Rating', inputType: 'dropdown', options: ['25Kv', '50Kv', '100Kv', '200Kv'], required: true),
           MachineryAttribute(name: 'Brand', inputType: 'text', required: false),
         ],
       ),
@@ -274,6 +274,25 @@ class _MachineryFormState extends State<MachineryForm> {
         const SnackBar(content: Text('Please select a machinery type')),
       );
       return;
+    }
+
+    final selectedType = _selectedType!.typeName.trim().toLowerCase();
+    if (selectedType == 'pump' || selectedType == 'turbine') {
+      final existingMachinery = await _dao.getMachineryForSet(widget.setId);
+      final conflictingType = selectedType == 'pump' ? 'turbine' : 'pump';
+      final hasConflict = existingMachinery.any((m) {
+        if (_isEdit && m.machineryId == widget.machinery?.machineryId) return false;
+        return m.machineryType.trim().toLowerCase() == conflictingType;
+      });
+
+      if (hasConflict) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('A set cannot have both Pump and Turbine.')),
+          );
+        }
+        return;
+      }
     }
 
     setState(() => _isSaving = true);

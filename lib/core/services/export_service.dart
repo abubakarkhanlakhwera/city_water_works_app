@@ -28,6 +28,204 @@ class ExportService {
     return '${now.day.toString().padLeft(2, '0')}-${now.month.toString().padLeft(2, '0')}-${now.year}';
   }
 
+  String _normalizeType(String rawType) {
+    final lower = rawType.trim().toLowerCase();
+    if (lower == 'motor') return 'Motor';
+    if (lower == 'pump') return 'Pump';
+    if (lower == 'transformer') return 'Transformer';
+    if (lower == 'turbine') return 'Turbine';
+    return rawType.trim().isEmpty ? 'Unknown' : rawType.trim();
+  }
+
+  String _extractSpecLabel(Machinery machinery) {
+    final specs = machinery.specs;
+    final type = _normalizeType(machinery.machineryType);
+
+    if (type == 'Motor') {
+      final hp = specs['Horsepower'] ?? specs['HP'];
+      return hp?.trim().isNotEmpty == true ? hp!.trim() : 'Unknown HP';
+    }
+    if (type == 'Pump') {
+      final size = specs['Size'];
+      return size?.trim().isNotEmpty == true ? size!.trim() : 'Unknown Size';
+    }
+    if (type == 'Transformer') {
+      final kv = specs['kVA Rating'] ?? specs['KVA Rating'] ?? specs['kVA'] ?? specs['KV'];
+      if (kv?.trim().isNotEmpty == true) {
+        return kv!.trim().replaceAll(RegExp(r'kva', caseSensitive: false), 'Kv');
+      }
+      return 'Unknown Kv';
+    }
+    if (type == 'Turbine') {
+      return 'Turbine';
+    }
+
+    return machinery.displayLabel.trim().isNotEmpty ? machinery.displayLabel.trim() : 'Unspecified';
+  }
+
+  Future<Map<String, int>> _countSchemesByKeyTypes() async {
+    final schemes = await _schemesDao.getAllSchemes();
+    int schemesWithTurbine = 0;
+    int schemesWithPump = 0;
+
+    for (int schemeIndex = 0; schemeIndex < schemes.length; schemeIndex++) {
+      final scheme = schemes[schemeIndex];
+      final schemeId = scheme.schemeId;
+      if (schemeId == null) continue;
+
+      final sets = await _setsDao.getSetsForScheme(schemeId);
+      bool hasTurbine = false;
+      bool hasPump = false;
+
+      for (final setModel in sets) {
+        final setId = setModel.setId;
+        if (setId == null) continue;
+
+        final machineryList = await _machineryDao.getMachineryForSet(setId);
+        for (final machinery in machineryList) {
+          final type = _normalizeType(machinery.machineryType).toLowerCase();
+          if (type == 'turbine') hasTurbine = true;
+          if (type == 'pump') hasPump = true;
+          if (hasTurbine && hasPump) break;
+        }
+
+        if (hasTurbine && hasPump) break;
+      }
+
+      if (hasTurbine) schemesWithTurbine++;
+      if (hasPump) schemesWithPump++;
+    }
+
+    return {
+      'turbine': schemesWithTurbine,
+      'pump': schemesWithPump,
+    };
+  }
+
+  Future<Uint8List> exportMachineryReportToPdf() async {
+    final machineryList = await _machineryDao.getAllMachineryWithStats();
+    final schemeTypeCounts = await _countSchemesByKeyTypes();
+
+    final totalByType = <String, int>{};
+    final functionalByType = <String, int>{};
+    final amountByType = <String, double>{};
+    final specCountsByType = <String, Map<String, int>>{};
+
+    for (final machinery in machineryList) {
+      final type = _normalizeType(machinery.machineryType);
+      totalByType[type] = (totalByType[type] ?? 0) + 1;
+      functionalByType[type] = totalByType[type]!;
+      amountByType[type] = (amountByType[type] ?? 0.0) + machinery.totalAmount;
+
+      final specLabel = _extractSpecLabel(machinery);
+      final typeMap = specCountsByType.putIfAbsent(type, () => <String, int>{});
+      typeMap[specLabel] = (typeMap[specLabel] ?? 0) + 1;
+    }
+
+    const preferred = ['Motor', 'Pump', 'Transformer', 'Turbine'];
+    final typeSet = totalByType.keys.toSet();
+    final orderedTypes = <String>[];
+    for (final type in preferred) {
+      if (typeSet.contains(type)) orderedTypes.add(type);
+    }
+    final others = typeSet.where((t) => !preferred.contains(t)).toList()..sort();
+    orderedTypes.addAll(others);
+
+    final totalFunctional = functionalByType.values.fold<int>(0, (sum, v) => sum + v);
+    final totalMachinery = totalByType.values.fold<int>(0, (sum, v) => sum + v);
+    final grandTotalAmount = amountByType.values.fold<double>(0.0, (sum, v) => sum + v);
+
+    final pdf = pw.Document();
+    final headerColor = PdfColor.fromHex('#1E3A5F');
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        footer: (context) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text('Prepared by City Water Works',
+                style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+            pw.Text('Page ${context.pageNumber} of ${context.pagesCount}',
+                style: const pw.TextStyle(fontSize: 8)),
+          ],
+        ),
+        build: (context) => [
+          pw.Text('Machinery Report',
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 4),
+          pw.Text('Generated on ${_nowFormatted()}', style: const pw.TextStyle(fontSize: 10)),
+          pw.SizedBox(height: 10),
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(8),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.grey400),
+              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  'Total Functional Machinery: $totalFunctional / $totalMachinery',
+                  style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  'Total Amount: ${_formatAmount(grandTotalAmount)}',
+                  style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+                ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  'Schemes with Turbines: ${schemeTypeCounts['turbine'] ?? 0}',
+                  style: const pw.TextStyle(fontSize: 11),
+                ),
+                pw.Text(
+                  'Schemes with Pumps: ${schemeTypeCounts['pump'] ?? 0}',
+                  style: const pw.TextStyle(fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 12),
+          pw.TableHelper.fromTextArray(
+            headerStyle: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10),
+            headerDecoration: pw.BoxDecoration(color: headerColor),
+            cellStyle: const pw.TextStyle(fontSize: 9),
+            cellAlignment: pw.Alignment.centerLeft,
+            headerAlignment: pw.Alignment.centerLeft,
+            headers: const ['Type', 'Functional / Total', 'Total Amount (Rs.)', 'Specification Breakdown'],
+            data: orderedTypes.map((type) {
+              final functional = functionalByType[type] ?? 0;
+              final total = totalByType[type] ?? 0;
+              final typeAmount = amountByType[type] ?? 0.0;
+              final specs = specCountsByType[type] ?? const <String, int>{};
+              final specRows = specs.keys.toList()..sort();
+              final specText = specRows.isEmpty
+                  ? '-'
+                  : specRows.map((spec) => '$spec × ${specs[spec]}').join(', ');
+              return [
+                type,
+                '$functional / $total',
+                _formatAmount(typeAmount),
+                specText,
+              ];
+            }).toList(),
+          ),
+          if (orderedTypes.isEmpty)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 12),
+              child: pw.Text('No machinery data available.',
+                  style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+            ),
+        ],
+      ),
+    );
+
+    return pdf.save();
+  }
+
   // ─────────────────── PDF Export ───────────────────
 
   Future<Uint8List> exportSetToPdf(int setId) async {
@@ -37,7 +235,6 @@ class ExportService {
     final scheme = await _schemesDao.getSchemeById(setModel.schemeId);
     final machineryList = await _machineryDao.getMachineryForSet(setId);
     final entries = await _entriesDao.getEntriesForSet(setId);
-    final totalAmount = entries.fold(0.0, (sum, e) => sum + e.amount);
 
     final entriesByMachinery = <int, List<dynamic>>{};
     int maxRows = 1;
@@ -53,17 +250,33 @@ class ExportService {
     }
     maxRows = math.max(maxRows, 2);
 
+    const maxMachineryPerBlock = 3;
+    final machineryBlocks = <List<Machinery>>[];
+    for (int i = 0; i < machineryList.length; i += maxMachineryPerBlock) {
+      final end = (i + maxMachineryPerBlock) > machineryList.length
+          ? machineryList.length
+          : (i + maxMachineryPerBlock);
+      machineryBlocks.add(machineryList.sublist(i, end));
+    }
+
     final pdf = pw.Document();
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.all(18),
         header: (context) => pw.Column(
           children: [
             pw.Text(
               '${scheme?.schemeName ?? 'Unknown Scheme'} ${setModel.setLabel}',
               textAlign: pw.TextAlign.center,
               style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 2),
+            pw.Text(
+              _excelStyleSetHeading(scheme?.schemeName ?? 'Unknown Scheme', setModel.setLabel),
+              textAlign: pw.TextAlign.center,
+              style: const pw.TextStyle(fontSize: 10),
             ),
             pw.SizedBox(height: 10),
           ],
@@ -78,16 +291,30 @@ class ExportService {
           ],
         ),
         build: (context) => [
-          pw.Column(
-            children: [
+          ...machineryBlocks.asMap().entries.expand((blockEntry) {
+            final blockIndex = blockEntry.key;
+            final block = blockEntry.value;
+            final tableWidth = PdfPageFormat.a4.landscape.width - 36;
+            final totalCols = 1 + (block.length * 3);
+            final colWidth = tableWidth / totalCols;
+            final firstHeaderWidth = colWidth * 4;
+            final otherHeaderWidth = colWidth * 3;
+
+            return <pw.Widget>[
+              if (blockIndex > 0)
+                pw.Padding(
+                  padding: const pw.EdgeInsets.only(bottom: 4),
+                  child: pw.Text('Continued',
+                      style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                ),
               pw.Row(
                 children: [
-                  ...machineryList.asMap().entries.map((entry) {
+                  ...block.asMap().entries.map((entry) {
                     final index = entry.key;
                     final machinery = entry.value;
                     return _pdfCell(
                       _machineryHeaderLabel(machinery),
-                      width: index == 0 ? 250 : 210,
+                      width: index == 0 ? firstHeaderWidth : otherHeaderWidth,
                       bold: true,
                       align: pw.TextAlign.center,
                     );
@@ -96,38 +323,34 @@ class ExportService {
               ),
               pw.Row(
                 children: [
-                  _pdfCell('Sr.No', width: 40, bold: true, align: pw.TextAlign.center),
-                  ...machineryList.expand((_) => [
-                        _pdfCell('Date', width: 70, bold: true),
-                        _pdfCell('Voucher No.', width: 70, bold: true),
-                        _pdfCell('Amount', width: 70, bold: true),
+                  _pdfCell('Sr.No', width: colWidth, bold: true, align: pw.TextAlign.center),
+                  ...block.expand((_) => [
+                        _pdfCell('Date', width: colWidth, bold: true, align: pw.TextAlign.center),
+                        _pdfCell('Voucher No.', width: colWidth, bold: true, align: pw.TextAlign.center),
+                        _pdfCell('Amount', width: colWidth, bold: true, align: pw.TextAlign.center),
                       ]),
                 ],
               ),
               ...List.generate(maxRows, (rowIndex) {
                 return pw.Row(
                   children: [
-                    _pdfCell('${rowIndex + 1}', width: 40, align: pw.TextAlign.center),
-                    ...machineryList.expand((machinery) {
+                    _pdfCell('${rowIndex + 1}', width: colWidth, align: pw.TextAlign.center),
+                    ...block.expand((machinery) {
                       final mEntries = entriesByMachinery[machinery.machineryId!] ?? [];
                       final entry = rowIndex < mEntries.length ? mEntries[rowIndex] : null;
                       return [
-                        _pdfCell(entry?.entryDate ?? '-', width: 70),
-                        _pdfCell(entry?.voucherNo?.toString() ?? '-', width: 70, align: pw.TextAlign.center),
-                        _pdfCell(entry != null ? _formatAmount(entry.amount) : '-', width: 70, align: pw.TextAlign.right),
+                        _pdfCell(entry?.entryDate ?? '-', width: colWidth, align: pw.TextAlign.center),
+                        _pdfCell(entry?.voucherNo?.toString() ?? '-', width: colWidth, align: pw.TextAlign.center),
+                        _pdfCell(entry != null ? _formatAmount(entry.amount) : '-', width: colWidth, align: pw.TextAlign.center),
                       ];
                     }),
                   ],
                 );
               }),
-            ],
-          ),
-          pw.SizedBox(height: 10),
-          pw.Container(
-            alignment: pw.Alignment.centerRight,
-            child: pw.Text('Total: ${_formatAmount(totalAmount)}',
-                style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-          ),
+              pw.SizedBox(height: 8),
+            ];
+          }),
+          pw.SizedBox(height: 2),
         ],
       ),
     );
@@ -157,9 +380,17 @@ class ExportService {
       parts.add(machinery.brand!.trim());
     }
 
-    return parts.join(' ');
+    final computed = parts.join(' ').trim();
+    if (computed.toLowerCase() == type.toLowerCase() && machinery.displayLabel.trim().isNotEmpty) {
+      return machinery.displayLabel.trim();
+    }
+    return computed;
   }
 
+  String _excelStyleSetHeading(String schemeName, String setLabel) {
+    final normalizedSet = setLabel.replaceFirst('Set No. ', 'Set No.');
+    return '$schemeName $normalizedSet';
+  }
   pw.Widget _pdfCell(
     String text, {
     required double width,
@@ -192,33 +423,379 @@ class ExportService {
 
     final sets = await _setsDao.getSetsForScheme(schemeId);
     final pdf = pw.Document();
-    final headerColor = PdfColor.fromHex('#1E3A5F');
 
+    final masterTemplates = <_MachineryTemplate>[];
+    if (sets.isNotEmpty) {
+      final firstSetMachinery = await _machineryDao.getMachineryForSet(sets.first.setId!);
+      for (final machinery in firstSetMachinery) {
+        masterTemplates.add(
+          _MachineryTemplate(
+            type: machinery.machineryType,
+            label: _machineryHeaderLabel(machinery),
+          ),
+        );
+      }
+    }
+
+    final sectionWidgets = <pw.Widget>[];
     for (final setModel in sets) {
       final machineryList = await _machineryDao.getMachineryForSet(setModel.setId!);
+      final entries = await _entriesDao.getEntriesForSet(setModel.setId!);
 
-      for (final machinery in machineryList) {
-        final entries = await _entriesDao.getEntriesForMachinery(machinery.machineryId!);
-        final totalAmount = entries.fold(0.0, (sum, e) => sum + e.amount);
+      final actualTypes = machineryList
+          .map((m) => _normalizeType(m.machineryType).toLowerCase())
+          .toSet();
+      final hasTurbine = actualTypes.contains('turbine');
+      final hasPump = actualTypes.contains('pump');
+
+      final effectiveMachineryList = <Machinery>[];
+      final remainingMachinery = <Machinery>[...machineryList];
+
+      for (final template in masterTemplates) {
+        final templateType = _normalizeType(template.type).toLowerCase();
+        if (hasTurbine && templateType == 'pump') continue;
+        if (hasPump && templateType == 'turbine') continue;
+
+        final idx = remainingMachinery.indexWhere(
+            (m) => _normalizeType(m.machineryType).toLowerCase() == templateType);
+
+        if (idx >= 0) {
+          effectiveMachineryList.add(remainingMachinery.removeAt(idx));
+        } else {
+          effectiveMachineryList.add(
+            Machinery(
+              machineryId: -1,
+              setId: setModel.setId!,
+              machineryType: template.type,
+              displayLabel: template.label,
+              specs: const {},
+              brand: null,
+            ),
+          );
+        }
+      }
+
+      effectiveMachineryList.addAll(remainingMachinery);
+
+      final entriesByMachinery = <int, List<dynamic>>{};
+      int maxRows = 1;
+      for (final machinery in effectiveMachineryList) {
+        final machineryEntries = entries
+            .where((entry) => entry.machineryId == machinery.machineryId)
+            .toList()
+          ..sort((a, b) => a.serialNo.compareTo(b.serialNo));
+        entriesByMachinery[machinery.machineryId!] = machineryEntries;
+        if (machineryEntries.length > maxRows) {
+          maxRows = machineryEntries.length;
+        }
+      }
+      maxRows = math.max(maxRows, 2);
+
+      const maxMachineryPerBlock = 3;
+      final machineryBlocks = <List<Machinery>>[];
+      for (int i = 0; i < effectiveMachineryList.length; i += maxMachineryPerBlock) {
+        final end = (i + maxMachineryPerBlock) > effectiveMachineryList.length
+            ? effectiveMachineryList.length
+            : (i + maxMachineryPerBlock);
+        machineryBlocks.add(effectiveMachineryList.sublist(i, end));
+      }
+
+      sectionWidgets.add(
+        pw.Text(
+          setModel.setLabel,
+          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+        ),
+      );
+      sectionWidgets.add(
+        pw.Text(
+          _excelStyleSetHeading(scheme.schemeName, setModel.setLabel),
+          style: const pw.TextStyle(fontSize: 9),
+        ),
+      );
+      sectionWidgets.add(pw.SizedBox(height: 4));
+
+      if (effectiveMachineryList.isEmpty) {
+        sectionWidgets.add(pw.Text('No machinery data', style: pw.TextStyle(fontSize: 9)));
+        sectionWidgets.add(pw.SizedBox(height: 10));
+        continue;
+      }
+
+      for (int blockIndex = 0; blockIndex < machineryBlocks.length; blockIndex++) {
+        final block = machineryBlocks[blockIndex];
+        final tableWidth = PdfPageFormat.a4.landscape.width - 36;
+        final totalCols = 1 + (block.length * 3);
+        final colWidth = tableWidth / totalCols;
+        final firstHeaderWidth = colWidth * 4;
+        final otherHeaderWidth = colWidth * 3;
+
+        if (blockIndex > 0) {
+          sectionWidgets.add(
+            pw.Text('${setModel.setLabel} (continued)',
+                style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+          );
+          sectionWidgets.add(pw.SizedBox(height: 3));
+        }
+
+        sectionWidgets.add(
+          pw.Row(
+            children: [
+              ...block.asMap().entries.map((entry) {
+                final index = entry.key;
+                final machinery = entry.value;
+                return _pdfCell(
+                  _machineryHeaderLabel(machinery),
+                  width: index == 0 ? firstHeaderWidth : otherHeaderWidth,
+                  bold: true,
+                  align: pw.TextAlign.center,
+                );
+              }),
+            ],
+          ),
+        );
+        sectionWidgets.add(
+          pw.Row(
+            children: [
+              _pdfCell('Sr.No', width: colWidth, bold: true, align: pw.TextAlign.center),
+              ...block.expand((_) => [
+                    _pdfCell('Date', width: colWidth, bold: true, align: pw.TextAlign.center),
+                    _pdfCell('Voucher No.', width: colWidth, bold: true, align: pw.TextAlign.center),
+                    _pdfCell('Amount', width: colWidth, bold: true, align: pw.TextAlign.center),
+                  ]),
+            ],
+          ),
+        );
+
+        for (int rowIndex = 0; rowIndex < maxRows; rowIndex++) {
+          sectionWidgets.add(
+            pw.Row(
+              children: [
+                _pdfCell('${rowIndex + 1}', width: colWidth, align: pw.TextAlign.center),
+                ...block.expand((machinery) {
+                  final mEntries = entriesByMachinery[machinery.machineryId!] ?? [];
+                  final entry = rowIndex < mEntries.length ? mEntries[rowIndex] : null;
+                  return [
+                    _pdfCell(entry?.entryDate ?? '-', width: colWidth, align: pw.TextAlign.center),
+                    _pdfCell(entry?.voucherNo?.toString() ?? '-', width: colWidth, align: pw.TextAlign.center),
+                    _pdfCell(
+                        entry != null ? _formatAmount(entry.amount) : '-',
+                        width: colWidth,
+                        align: pw.TextAlign.center),
+                  ];
+                }),
+              ],
+            ),
+          );
+        }
+
+        sectionWidgets.add(pw.SizedBox(height: 8));
+      }
+
+      sectionWidgets.add(pw.SizedBox(height: 2));
+    }
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.all(18),
+        header: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              scheme.schemeName,
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Scheme Summary Report', style: const pw.TextStyle(fontSize: 10)),
+                pw.Text('Date: ${_nowFormatted()}', style: const pw.TextStyle(fontSize: 10)),
+              ],
+            ),
+            pw.SizedBox(height: 6),
+            pw.Divider(thickness: 1),
+          ],
+        ),
+        footer: (context) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text('Prepared by City Water Works',
+                style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+            pw.Text('Page ${context.pageNumber} of ${context.pagesCount}',
+                style: const pw.TextStyle(fontSize: 8)),
+          ],
+        ),
+        build: (context) => sectionWidgets,
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  Future<Uint8List> exportAllMachineryToPdf() async {
+    final schemes = await _schemesDao.getAllSchemes();
+    final schemeTypeCounts = await _countSchemesByKeyTypes();
+    final allMachinery = await _machineryDao.getAllMachineryWithStats();
+    final machineryCountsByType = <String, int>{};
+    for (final machinery in allMachinery) {
+      final type = _normalizeType(machinery.machineryType);
+      machineryCountsByType[type] = (machineryCountsByType[type] ?? 0) + 1;
+    }
+    final motorCount = machineryCountsByType['Motor'] ?? 0;
+    final pumpCount = machineryCountsByType['Pump'] ?? 0;
+    final transformerCount = machineryCountsByType['Transformer'] ?? 0;
+    final turbineCount = machineryCountsByType['Turbine'] ?? 0;
+    final pdf = pw.Document();
+
+    if (schemes.isEmpty) {
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.all(18),
+          header: (context) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Water Supply Scheme History - Complete Machinery Export',
+                style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                'Scheme Coverage (at least one): Turbine ${schemeTypeCounts['turbine'] ?? 0} | Pump ${schemeTypeCounts['pump'] ?? 0}',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+              pw.Text(
+                'Total Machinery: Motor $motorCount | Pump $pumpCount | Transformer $transformerCount | Turbine $turbineCount',
+                style: const pw.TextStyle(fontSize: 10),
+              ),
+              pw.Text('Date: ${_nowFormatted()}', style: const pw.TextStyle(fontSize: 10)),
+              pw.SizedBox(height: 6),
+              pw.Divider(thickness: 1),
+            ],
+          ),
+          footer: (context) => pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Prepared by City Water Works',
+                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+              pw.Text('Page ${context.pageNumber} of ${context.pagesCount}',
+                  style: const pw.TextStyle(fontSize: 8)),
+            ],
+          ),
+          build: (context) => [
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 24),
+              child: pw.Text('No schemes found.', style: const pw.TextStyle(fontSize: 11)),
+            ),
+          ],
+        ),
+      );
+
+      return pdf.save();
+    }
+
+    for (int schemeIndex = 0; schemeIndex < schemes.length; schemeIndex++) {
+      final scheme = schemes[schemeIndex];
+      final schemeId = scheme.schemeId;
+      if (schemeId == null) continue;
+
+      final sets = await _setsDao.getSetsForScheme(schemeId);
+      final machineryBySet = <int, List<Machinery>>{};
+      final summaryByType = <String, Map<String, int>>{};
+      final totalByType = <String, int>{};
+      int schemeTotalMachinery = 0;
+
+      for (final setModel in sets) {
+        final setId = setModel.setId;
+        if (setId == null) continue;
+        final machineryList = await _machineryDao.getMachineryForSet(setId);
+        machineryBySet[setId] = machineryList;
+
+        for (final machinery in machineryList) {
+          final type = _normalizeType(machinery.machineryType);
+          final spec = _extractSpecLabel(machinery);
+          totalByType[type] = (totalByType[type] ?? 0) + 1;
+          final typeMap = summaryByType.putIfAbsent(type, () => <String, int>{});
+          typeMap[spec] = (typeMap[spec] ?? 0) + 1;
+          schemeTotalMachinery++;
+        }
+      }
+
+      final schemeSummaryLines = <String>[
+        'Total Sets: ${sets.length} | Total Machinery: $schemeTotalMachinery',
+      ];
+
+      const preferred = ['Motor', 'Pump', 'Transformer', 'Turbine'];
+      final presentTypes = summaryByType.keys.toSet();
+      final orderedTypes = <String>[];
+      for (final type in preferred) {
+        if (presentTypes.contains(type)) orderedTypes.add(type);
+      }
+      final others = presentTypes.where((t) => !preferred.contains(t)).toList()..sort();
+      orderedTypes.addAll(others);
+
+      for (final type in orderedTypes) {
+        final specs = summaryByType[type] ?? const <String, int>{};
+        final specLabels = specs.keys.toList()..sort();
+        final specText = specLabels.isEmpty
+            ? '-'
+            : specLabels.map((label) => '$label × ${specs[label]}').join(', ');
+        schemeSummaryLines.add('$type (${totalByType[type] ?? 0}): $specText');
+      }
+
+      if (sets.isEmpty) {
+        final emptyWidgets = <pw.Widget>[
+          pw.Text(
+            scheme.schemeName,
+            style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.Container(
+            width: double.infinity,
+            margin: const pw.EdgeInsets.only(top: 4),
+            padding: const pw.EdgeInsets.all(6),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.grey500, width: 0.8),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: schemeSummaryLines
+                  .map((line) => pw.Padding(
+                        padding: const pw.EdgeInsets.only(bottom: 2),
+                        child: pw.Text(line, style: const pw.TextStyle(fontSize: 9)),
+                      ))
+                  .toList(),
+            ),
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text('No sets found.', style: const pw.TextStyle(fontSize: 9)),
+        ];
 
         pdf.addPage(
           pw.MultiPage(
             pageFormat: PdfPageFormat.a4.landscape,
+            margin: const pw.EdgeInsets.all(18),
             header: (context) => pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text(scheme.schemeName,
-                    style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 4),
-                pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                  children: [
-                    pw.Text('${setModel.setLabel} — ${machinery.displayLabel}',
-                        style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-                    pw.Text('Date: ${_nowFormatted()}', style: const pw.TextStyle(fontSize: 10)),
-                  ],
+                pw.Text(
+                  'Water Supply Scheme History - Complete Machinery Export',
+                  style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
                 ),
-                pw.Divider(),
+                pw.SizedBox(height: 4),
+                if (schemeIndex == 0 && context.pageNumber == 1)
+                  pw.Text(
+                    'Scheme Coverage (at least one): Turbine ${schemeTypeCounts['turbine'] ?? 0} | Pump ${schemeTypeCounts['pump'] ?? 0}',
+                    style: const pw.TextStyle(fontSize: 10),
+                  ),
+                if (schemeIndex == 0 && context.pageNumber == 1)
+                  pw.Text(
+                    'Total Machinery: Motor $motorCount | Pump $pumpCount | Transformer $transformerCount | Turbine $turbineCount',
+                    style: const pw.TextStyle(fontSize: 10),
+                  ),
+                pw.Text('Scheme: ${scheme.schemeName}', style: const pw.TextStyle(fontSize: 10)),
+                pw.Text('Date: ${_nowFormatted()}', style: const pw.TextStyle(fontSize: 10)),
+                pw.SizedBox(height: 6),
+                pw.Divider(thickness: 1),
               ],
             ),
             footer: (context) => pw.Row(
@@ -230,31 +807,220 @@ class ExportService {
                     style: const pw.TextStyle(fontSize: 8)),
               ],
             ),
-            build: (context) => [
-              pw.TableHelper.fromTextArray(
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10),
-                headerDecoration: pw.BoxDecoration(color: headerColor),
-                cellStyle: const pw.TextStyle(fontSize: 9),
-                cellAlignment: pw.Alignment.centerLeft,
-                headerAlignment: pw.Alignment.centerLeft,
-                headers: ['Sr. No.', 'Date', 'Voucher No.', 'Amount (Rs.)', 'Reg. Page No.'],
-                data: entries.map((e) => [
-                  e.serialNo.toString(),
-                  e.entryDate,
-                  e.voucherNo?.toString() ?? '',
-                  _formatAmount(e.amount),
-                  e.regPageNo ?? '',
-                ]).toList(),
-              ),
-              pw.SizedBox(height: 10),
-              pw.Container(
-                alignment: pw.Alignment.centerRight,
-                child: pw.Text('Total: ${_formatAmount(totalAmount)}',
-                    style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-              ),
-            ],
+            build: (context) => emptyWidgets,
           ),
         );
+        continue;
+      }
+
+      for (int setIndex = 0; setIndex < sets.length; setIndex++) {
+        final setModel = sets[setIndex];
+        final setId = setModel.setId;
+        if (setId == null) continue;
+        final machineryList = machineryBySet[setId] ?? const <Machinery>[];
+        final entries = await _entriesDao.getEntriesForSet(setId);
+
+        final setWidgets = <pw.Widget>[];
+        const rowsPerPageWithSummary = 18;
+        const rowsPerPage = 22;
+        bool firstSetPage = true;
+
+        void addSchemeSummaryBlock() {
+          setWidgets.add(
+            pw.Text(
+              scheme.schemeName,
+              style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold),
+            ),
+          );
+          setWidgets.add(
+            pw.Container(
+              width: double.infinity,
+              margin: const pw.EdgeInsets.only(top: 4),
+              padding: const pw.EdgeInsets.all(6),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey500, width: 0.8),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: schemeSummaryLines
+                    .map((line) => pw.Padding(
+                          padding: const pw.EdgeInsets.only(bottom: 2),
+                          child: pw.Text(line, style: const pw.TextStyle(fontSize: 9)),
+                        ))
+                    .toList(),
+              ),
+            ),
+          );
+          setWidgets.add(pw.SizedBox(height: 6));
+        }
+
+        void addSetHeader({required bool continued}) {
+          final label = continued ? '${setModel.setLabel} (continued)' : setModel.setLabel;
+          setWidgets.add(
+            pw.Text(
+              label,
+              style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+            ),
+          );
+          setWidgets.add(
+            pw.Text(
+              _excelStyleSetHeading(scheme.schemeName, setModel.setLabel),
+              style: const pw.TextStyle(fontSize: 9),
+            ),
+          );
+          setWidgets.add(pw.SizedBox(height: 4));
+        }
+
+        if (machineryList.isEmpty) {
+          if (setIndex == 0) {
+            addSchemeSummaryBlock();
+          }
+          addSetHeader(continued: false);
+          setWidgets.add(pw.Text('No machinery data', style: const pw.TextStyle(fontSize: 9)));
+          setWidgets.add(pw.SizedBox(height: 10));
+        } else {
+          final entriesByMachinery = <int, List<dynamic>>{};
+          int maxRows = 1;
+          for (final machinery in machineryList) {
+            final machineryEntries = entries
+                .where((entry) => entry.machineryId == machinery.machineryId)
+                .toList()
+              ..sort((a, b) => a.serialNo.compareTo(b.serialNo));
+            entriesByMachinery[machinery.machineryId!] = machineryEntries;
+            if (machineryEntries.length > maxRows) {
+              maxRows = machineryEntries.length;
+            }
+          }
+          maxRows = math.max(maxRows, 2);
+
+          const maxMachineryPerBlock = 3;
+          final machineryBlocks = <List<Machinery>>[];
+          for (int i = 0; i < machineryList.length; i += maxMachineryPerBlock) {
+            final end = (i + maxMachineryPerBlock) > machineryList.length
+                ? machineryList.length
+                : (i + maxMachineryPerBlock);
+            machineryBlocks.add(machineryList.sublist(i, end));
+          }
+
+          for (int blockIndex = 0; blockIndex < machineryBlocks.length; blockIndex++) {
+            final block = machineryBlocks[blockIndex];
+            final tableWidth = PdfPageFormat.a4.landscape.width - 36;
+            final totalCols = 1 + (block.length * 3);
+            final colWidth = tableWidth / totalCols;
+            final firstHeaderWidth = colWidth * 4;
+            final otherHeaderWidth = colWidth * 3;
+
+            for (int start = 0; start < maxRows; start +=
+                ((setIndex == 0 && firstSetPage) ? rowsPerPageWithSummary : rowsPerPage)) {
+              final chunkSize =
+                  (setIndex == 0 && firstSetPage) ? rowsPerPageWithSummary : rowsPerPage;
+              final end = math.min(start + chunkSize, maxRows);
+
+              if (!firstSetPage) {
+                setWidgets.add(pw.NewPage());
+              }
+
+              if (setIndex == 0 && firstSetPage) {
+                addSchemeSummaryBlock();
+              }
+
+              final isContinued = !(blockIndex == 0 && start == 0);
+              addSetHeader(continued: isContinued);
+
+              setWidgets.add(
+                pw.Row(
+                  children: [
+                    ...block.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final machinery = entry.value;
+                      return _pdfCell(
+                        _machineryHeaderLabel(machinery),
+                        width: index == 0 ? firstHeaderWidth : otherHeaderWidth,
+                        bold: true,
+                        align: pw.TextAlign.center,
+                      );
+                    }),
+                  ],
+                ),
+              );
+              setWidgets.add(
+                pw.Row(
+                  children: [
+                    _pdfCell('Sr.No', width: colWidth, bold: true, align: pw.TextAlign.center),
+                    ...block.expand((_) => [
+                          _pdfCell('Date', width: colWidth, bold: true, align: pw.TextAlign.center),
+                          _pdfCell('Voucher No.', width: colWidth, bold: true, align: pw.TextAlign.center),
+                          _pdfCell('Amount', width: colWidth, bold: true, align: pw.TextAlign.center),
+                        ]),
+                  ],
+                ),
+              );
+
+              for (int rowIndex = start; rowIndex < end; rowIndex++) {
+                setWidgets.add(
+                  pw.Row(
+                    children: [
+                      _pdfCell('${rowIndex + 1}', width: colWidth, align: pw.TextAlign.center),
+                      ...block.expand((machinery) {
+                        final mEntries = entriesByMachinery[machinery.machineryId!] ?? [];
+                        final entry = rowIndex < mEntries.length ? mEntries[rowIndex] : null;
+                        return [
+                          _pdfCell(entry?.entryDate ?? '-', width: colWidth, align: pw.TextAlign.center),
+                          _pdfCell(entry?.voucherNo?.toString() ?? '-', width: colWidth, align: pw.TextAlign.center),
+                          _pdfCell(entry != null ? _formatAmount(entry.amount) : '-', width: colWidth, align: pw.TextAlign.center),
+                        ];
+                      }),
+                    ],
+                  ),
+                );
+              }
+
+              setWidgets.add(pw.SizedBox(height: 8));
+              firstSetPage = false;
+            }
+          }
+        }
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.all(18),
+          header: (context) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Water Supply Scheme History - Complete Machinery Export',
+                style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.SizedBox(height: 4),
+              if (schemeIndex == 0 && setIndex == 0 && context.pageNumber == 1)
+                pw.Text(
+                  'Scheme Coverage (at least one): Turbine ${schemeTypeCounts['turbine'] ?? 0} | Pump ${schemeTypeCounts['pump'] ?? 0}',
+                  style: const pw.TextStyle(fontSize: 10),
+                ),
+              if (schemeIndex == 0 && setIndex == 0 && context.pageNumber == 1)
+                pw.Text(
+                  'Total Machinery: Motor $motorCount | Pump $pumpCount | Transformer $transformerCount | Turbine $turbineCount',
+                  style: const pw.TextStyle(fontSize: 10),
+                ),
+              pw.Text('Scheme: ${scheme.schemeName}', style: const pw.TextStyle(fontSize: 10)),
+              pw.Text('Date: ${_nowFormatted()}', style: const pw.TextStyle(fontSize: 10)),
+              pw.SizedBox(height: 6),
+              pw.Divider(thickness: 1),
+            ],
+          ),
+          footer: (context) => pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Prepared by City Water Works',
+                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+              pw.Text('Page ${context.pageNumber} of ${context.pagesCount}',
+                  style: const pw.TextStyle(fontSize: 8)),
+            ],
+          ),
+          build: (context) => setWidgets,
+        ),
+      );
       }
     }
 
@@ -264,6 +1030,14 @@ class ExportService {
   Future<String> savePdf(Uint8List bytes, String filename) async {
     final dir = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(bytes);
+    return file.path;
+  }
+
+  Future<String> savePdfToDownloads(Uint8List bytes, String filename) async {
+    final downloadsDir = await getDownloadsDirectory();
+    final targetDir = downloadsDir ?? await getApplicationDocumentsDirectory();
+    final file = File('${targetDir.path}/$filename');
     await file.writeAsBytes(bytes);
     return file.path;
   }
@@ -375,4 +1149,14 @@ class ExportService {
     await file.writeAsString(buffer.toString());
     return file.path;
   }
+}
+
+class _MachineryTemplate {
+  final String type;
+  final String label;
+
+  _MachineryTemplate({
+    required this.type,
+    required this.label,
+  });
 }

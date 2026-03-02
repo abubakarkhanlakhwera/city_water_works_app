@@ -127,6 +127,30 @@ class _ExportScreenState extends State<ExportScreen> {
     }
   }
 
+  Future<void> _exportAllMachineryPdf() async {
+    setState(() => _isExporting = true);
+
+    try {
+      final pdfBytes = await _exportService.exportAllMachineryToPdf();
+      final now = DateTime.now();
+      final filename =
+          'WaterSupplySchemeHistory_AllMachinery_${now.year.toString().padLeft(4, '0')}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.pdf';
+      final filePath = await _exportService.savePdfToDownloads(pdfBytes, filename);
+
+      if (mounted) {
+        _showExportSuccess(filePath, suggestedFileName: filename);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
   String _buildSuggestedFileName({required String extension}) {
     final rawBaseName = _exportScope == 'set' && _selectedSet != null
         ? '${_selectedSet!.setLabel}_Export'
@@ -297,6 +321,15 @@ class _ExportScreenState extends State<ExportScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.download),
                     label: Text(_isExporting ? 'Exporting...' : 'Export'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: _isExporting ? null : _exportAllMachineryPdf,
+                    icon: const Icon(Icons.picture_as_pdf),
+                    label: const Text('Export All Machinery (Single PDF)'),
                   ),
                 ),
               ],

@@ -218,6 +218,15 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
                                     children: [
                                       Text(_set!.setLabel,
                                           style: Theme.of(context).textTheme.titleLarge),
+                                      if (_scheme != null) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${_scheme!.schemeName} ${_set!.setLabel.replaceFirst('Set No. ', 'Set No.')}',
+                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                        ),
+                                      ],
                                       const SizedBox(height: 4),
                                       Text(
                                         'Total: ${CurrencyUtils.formatAmount(_set!.totalAmount)}',

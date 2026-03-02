@@ -25,7 +25,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
       onConfigure: (db) async {
@@ -100,9 +100,20 @@ class AppDatabase {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE users (
+        user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        password TEXT NOT NULL,
+        full_name TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+
     // Insert default machinery types
     await _insertDefaultTypes(db);
     await _insertDefaultSettings(db);
+    await _insertDefaultUser(db);
   }
 
   Future<void> _insertDefaultTypes(Database db) async {
@@ -153,14 +164,41 @@ class AppDatabase {
       'auto_backup': 'off',
       'default_export_format': 'pdf',
       'pdf_paper_size': 'a4',
+      'remember_me': 'false',
+      'logged_in_user': '',
     };
     for (final entry in defaults.entries) {
       await db.insert('app_settings', {'key': entry.key, 'value': entry.value});
     }
   }
 
+  Future<void> _insertDefaultUser(Database db) async {
+    final now = _nowFormatted();
+    await db.insert('users', {
+      'username': 'admin',
+      'password': 'admin123',
+      'full_name': 'Administrator',
+      'created_at': now,
+    });
+  }
+
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    // Future migrations go here
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+          user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT NOT NULL UNIQUE,
+          password TEXT NOT NULL,
+          full_name TEXT,
+          created_at TEXT NOT NULL
+        )
+      ''');
+
+      final existingUsers = await db.query('users', limit: 1);
+      if (existingUsers.isEmpty) {
+        await _insertDefaultUser(db);
+      }
+    }
   }
 
   String _nowFormatted() {

@@ -45,9 +45,41 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.4
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/branding/app_brand.png
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: assets/branding/app_brand.png
+    background_color: "#0B1E3A"
+    theme_color: "#0B1E3A"
+  windows:
+    generate: true
+    image_path: assets/branding/app_brand.png
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: assets/branding/app_brand.png
+
+flutter_native_splash:
+  color: "#0B1E3A"
+  image: assets/branding/app_brand.png
+  android: true
+  ios: true
+  web: true
+  android_12:
+    color: "#0B1E3A"
+    image: assets/branding/app_brand.png
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/branding/app_brand.png
   #         style: italic
   #   - family: Trajan Pro
   #     fonts:
