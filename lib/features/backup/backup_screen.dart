@@ -1,0 +1,296 @@
+import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../core/services/backup_service.dart';
+import '../../shared/theme/app_colors.dart';
+
+class BackupScreen extends StatefulWidget {
+  const BackupScreen({super.key});
+
+  @override
+  State<BackupScreen> createState() => _BackupScreenState();
+}
+
+class _BackupScreenState extends State<BackupScreen> {
+  final _backupService = BackupService();
+  List<BackupInfo> _backups = [];
+  bool _isLoading = true;
+  bool _isProcessing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBackups();
+  }
+
+  Future<void> _loadBackups() async {
+    setState(() => _isLoading = true);
+    try {
+      final backups = await _backupService.listBackups();
+      if (mounted) setState(() { _backups = backups; _isLoading = false; });
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _createBackup() async {
+    setState(() => _isProcessing = true);
+    try {
+      final filePath = await _backupService.createBackup();
+      if (mounted) {
+        _loadBackups();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backup created successfully')),
+        );
+
+        // Offer to share
+        final share = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Backup Created'),
+            content: Text('Saved to:\n$filePath'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('OK')),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.pop(ctx, true),
+                icon: const Icon(Icons.share),
+                label: const Text('Share'),
+              ),
+            ],
+          ),
+        );
+        if (share == true) {
+          await Share.shareXFiles([XFile(filePath)]);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error creating backup: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _restoreBackup({String? filePath}) async {
+    String? path = filePath;
+
+    if (path == null) {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+      );
+      if (result == null || result.files.single.path == null) return;
+      path = result.files.single.path!;
+    }
+
+    // Confirm
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore Backup'),
+        content: const Text(
+          'This will REPLACE all current data with the backup data. This action cannot be undone.\n\nContinue?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.warning),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isProcessing = true);
+    try {
+      await _backupService.restoreBackup(path!);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backup restored successfully. Restarting...')),
+        );
+        // Navigate to root
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error restoring backup: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _deleteAllData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete All Data'),
+        content: const Text(
+          'This will permanently delete ALL data including schemes, sets, machinery, and billing entries.\n\n'
+          'This action CANNOT be undone. Consider creating a backup first.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Delete Everything'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isProcessing = true);
+    try {
+      await _backupService.deleteAllData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('All data deleted')),
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Backup & Restore')),
+      body: _isProcessing
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Processing...'),
+                ],
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // Create backup
+                Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: AppColors.primary,
+                      child: Icon(Icons.backup, color: Colors.white),
+                    ),
+                    title: const Text('Create Backup'),
+                    subtitle: const Text('Save a copy of all your data'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _createBackup,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Restore from file
+                Card(
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: AppColors.accent.withOpacity(0.8),
+                      child: const Icon(Icons.restore, color: Colors.white),
+                    ),
+                    title: const Text('Restore from File'),
+                    subtitle: const Text('Import a .cww backup file'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => _restoreBackup(),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Previous backups
+                Text('Previous Backups', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+
+                if (_isLoading)
+                  const Center(child: CircularProgressIndicator())
+                else if (_backups.isEmpty)
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'No backups yet. Create your first backup above.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                else
+                  ..._backups.map((backup) {
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: const Icon(Icons.archive, color: AppColors.primary),
+                        title: Text(backup.filename, style: const TextStyle(fontSize: 13)),
+                        subtitle: Text('${backup.sizeFormatted} · ${_formatDate(backup.date)}'),
+                        trailing: PopupMenuButton<String>(
+                          onSelected: (v) {
+                            if (v == 'restore') _restoreBackup(filePath: backup.path);
+                            if (v == 'share') {
+                              Share.shareXFiles([XFile(backup.path)]);
+                            }
+                            if (v == 'delete') {
+                              File(backup.path).deleteSync();
+                              _loadBackups();
+                            }
+                          },
+                          itemBuilder: (ctx) => const [
+                            PopupMenuItem(value: 'restore', child: Text('Restore')),
+                            PopupMenuItem(value: 'share', child: Text('Share')),
+                            PopupMenuItem(value: 'delete', child: Text('Delete')),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+
+                const SizedBox(height: 32),
+                const Divider(),
+                const SizedBox(height: 16),
+
+                // Danger zone
+                Text('Danger Zone',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(color: AppColors.error)),
+                const SizedBox(height: 8),
+                Card(
+                  color: AppColors.error.withOpacity(0.05),
+                  child: ListTile(
+                    leading: const Icon(Icons.delete_forever, color: AppColors.error),
+                    title: const Text('Delete All Data',
+                        style: TextStyle(color: AppColors.error)),
+                    subtitle: const Text('Permanently remove all records'),
+                    onTap: _deleteAllData,
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  String _formatDate(DateTime dt) {
+    return '${dt.day.toString().padLeft(2, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+}

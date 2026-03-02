@@ -1,0 +1,253 @@
+import 'package:flutter/material.dart';
+import '../../core/database/daos/schemes_dao.dart';
+import '../../core/models/scheme.dart';
+import '../../shared/theme/app_colors.dart';
+import '../../shared/utils/currency_utils.dart';
+import 'scheme_detail_screen.dart';
+import 'scheme_form.dart';
+
+class SchemesListScreen extends StatefulWidget {
+  const SchemesListScreen({super.key});
+
+  @override
+  State<SchemesListScreen> createState() => _SchemesListScreenState();
+}
+
+class _SchemesListScreenState extends State<SchemesListScreen> {
+  final _schemesDao = SchemesDao();
+  List<Scheme> _schemes = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSchemes();
+  }
+
+  Future<void> _loadSchemes() async {
+    setState(() => _isLoading = true);
+    try {
+      final schemes = await _schemesDao.getAllSchemes();
+      if (mounted) {
+        setState(() {
+          _schemes = schemes;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  Future<void> _addScheme() async {
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => const SchemeForm(),
+    );
+    if (result == true) _loadSchemes();
+  }
+
+  Future<void> _editScheme(Scheme scheme) async {
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SchemeForm(scheme: scheme),
+    );
+    if (result == true) _loadSchemes();
+  }
+
+  Future<void> _deleteScheme(Scheme scheme) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Scheme'),
+        content: Text(
+          'Are you sure you want to delete "${scheme.schemeName}"?\nThis will delete ALL sets, machinery, and billing entries under this scheme.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _schemesDao.deleteScheme(scheme.schemeId!);
+      _loadSchemes();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Scheme deleted successfully')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Schemes'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadSchemes,
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _schemes.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.water_drop_outlined, size: 80, color: AppColors.textHint),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No schemes yet',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Add a scheme or import from Excel',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: _addScheme,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Scheme'),
+                      ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadSchemes,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _schemes.length,
+                    itemBuilder: (context, index) {
+                      final scheme = _schemes[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => SchemeDetailScreen(schemeId: scheme.schemeId!),
+                              ),
+                            );
+                            _loadSchemes();
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(Icons.water_drop, color: AppColors.primary),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        scheme.schemeName,
+                                        style: Theme.of(context).textTheme.titleLarge,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          _InfoChip(
+                                            icon: Icons.settings,
+                                            label: '${scheme.setCount} Sets',
+                                          ),
+                                          const SizedBox(width: 12),
+                                          _InfoChip(
+                                            icon: Icons.currency_rupee,
+                                            label: CurrencyUtils.formatAmountShort(scheme.totalAmount),
+                                          ),
+                                        ],
+                                      ),
+                                      if (scheme.description != null && scheme.description!.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 4),
+                                          child: Text(
+                                            scheme.description!,
+                                            style: Theme.of(context).textTheme.bodySmall,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                PopupMenuButton<String>(
+                                  onSelected: (value) {
+                                    if (value == 'edit') _editScheme(scheme);
+                                    if (value == 'delete') _deleteScheme(scheme);
+                                  },
+                                  itemBuilder: (ctx) => [
+                                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+      floatingActionButton: _schemes.isNotEmpty
+          ? FloatingActionButton(
+              onPressed: _addScheme,
+              child: const Icon(Icons.add),
+            )
+          : null,
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _InfoChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: AppColors.textSecondary),
+        const SizedBox(width: 4),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
+  }
+}

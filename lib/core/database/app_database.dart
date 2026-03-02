@@ -1,0 +1,196 @@
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
+
+class AppDatabase {
+  static final AppDatabase instance = AppDatabase._init();
+  static Database? _database;
+
+  AppDatabase._init();
+
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+    _database = await _initDB('city_water_works.db');
+    return _database!;
+  }
+
+  Future<String> get databasePath async {
+    final dir = await getApplicationDocumentsDirectory();
+    return join(dir.path, 'city_water_works.db');
+  }
+
+  Future<Database> _initDB(String fileName) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final path = join(dir.path, fileName);
+
+    return await openDatabase(
+      path,
+      version: 1,
+      onCreate: _createDB,
+      onUpgrade: _upgradeDB,
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
+    );
+  }
+
+  Future<void> _createDB(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE schemes (
+        scheme_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scheme_name TEXT NOT NULL,
+        description TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE sets (
+        set_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scheme_id INTEGER NOT NULL,
+        set_number INTEGER NOT NULL,
+        set_label TEXT NOT NULL,
+        FOREIGN KEY (scheme_id) REFERENCES schemes (scheme_id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE machinery (
+        machinery_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        set_id INTEGER NOT NULL,
+        machinery_type TEXT NOT NULL,
+        brand TEXT,
+        specs TEXT,
+        display_label TEXT NOT NULL,
+        sort_order INTEGER DEFAULT 0,
+        FOREIGN KEY (set_id) REFERENCES sets (set_id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE billing_entries (
+        entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        machinery_id INTEGER NOT NULL,
+        serial_no INTEGER NOT NULL,
+        entry_date TEXT NOT NULL,
+        voucher_no INTEGER,
+        amount REAL NOT NULL,
+        reg_page_no TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (machinery_id) REFERENCES machinery (machinery_id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE machinery_types (
+        type_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type_name TEXT NOT NULL UNIQUE,
+        attributes TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      )
+    ''');
+
+    // Insert default machinery types
+    await _insertDefaultTypes(db);
+    await _insertDefaultSettings(db);
+  }
+
+  Future<void> _insertDefaultTypes(Database db) async {
+    final now = _nowFormatted();
+
+    await db.insert('machinery_types', {
+      'type_name': 'Motor',
+      'attributes':
+          '[{"name":"Horsepower","input_type":"dropdown","options":["20HP","25HP","30HP","40HP"],"required":true},{"name":"Brand","input_type":"text","options":[],"required":false},{"name":"Phase","input_type":"dropdown","options":["Single","Three"],"required":false}]',
+      'created_at': now,
+    });
+
+    await db.insert('machinery_types', {
+      'type_name': 'Pump',
+      'attributes':
+          '[{"name":"Size","input_type":"dropdown","options":["4x5","3x5"],"required":true},{"name":"Type","input_type":"dropdown","options":["Centrifugal","Submersible"],"required":false}]',
+      'created_at': now,
+    });
+
+    await db.insert('machinery_types', {
+      'type_name': 'Transformer',
+      'attributes':
+          '[{"name":"kVA Rating","input_type":"dropdown","options":["25kVA","50kVA","100kVA","200kVA"],"required":true},{"name":"Brand","input_type":"text","options":[],"required":false}]',
+      'created_at': now,
+    });
+
+    await db.insert('machinery_types', {
+      'type_name': 'Turbine',
+      'attributes':
+          '[{"name":"Model","input_type":"text","options":[],"required":false},{"name":"Flow Rate","input_type":"number","options":[],"required":false}]',
+      'created_at': now,
+    });
+
+    await db.insert('machinery_types', {
+      'type_name': 'Miscellaneous',
+      'attributes':
+          '[{"name":"Particular","input_type":"text","options":[],"required":false}]',
+      'created_at': now,
+    });
+  }
+
+  Future<void> _insertDefaultSettings(Database db) async {
+    final defaults = {
+      'theme': 'system',
+      'primary_color': '#1E3A5F',
+      'currency_symbol': 'Rs.',
+      'amount_format': 'formatted', // formatted = 1,000; plain = 1000
+      'auto_backup': 'off',
+      'default_export_format': 'pdf',
+      'pdf_paper_size': 'a4',
+    };
+    for (final entry in defaults.entries) {
+      await db.insert('app_settings', {'key': entry.key, 'value': entry.value});
+    }
+  }
+
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    // Future migrations go here
+  }
+
+  String _nowFormatted() {
+    final now = DateTime.now();
+    return '${now.day.toString().padLeft(2, '0')}-${now.month.toString().padLeft(2, '0')}-${now.year} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> closeDatabase() async {
+    final db = await database;
+    await db.close();
+    _database = null;
+  }
+
+  /// Replace the database with a restored file
+  Future<void> replaceDatabase(String sourcePath) async {
+    await closeDatabase();
+    final dbPath = await databasePath;
+    // Copy source to current DB path
+    final sourceDb = await openDatabase(sourcePath, readOnly: true);
+    await sourceDb.close();
+
+    // Use raw file copy
+    await deleteDatabase(dbPath);
+    // Re-open from restored
+    _database = await openDatabase(
+      sourcePath,
+      version: 1,
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
+    );
+  }
+}
