@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 import '../../core/database/daos/settings_dao.dart';
 import '../../core/database/daos/machinery_types_dao.dart';
 import '../../core/database/daos/users_dao.dart';
@@ -179,11 +180,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final changed = await showDialog<bool>(
       context: context,
       builder: (ctx) {
+        final dialogWidth = math.min(420.0, MediaQuery.of(ctx).size.width * 0.9);
         return StatefulBuilder(
           builder: (ctx, setLocalState) => AlertDialog(
             title: const Text('Change Password'),
             content: SizedBox(
-              width: 420,
+              width: dialogWidth,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -287,12 +289,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(isCompact ? 12 : 16),
               children: [
                 // Appearance
                 Text('Appearance', style: Theme.of(context).textTheme.titleMedium),

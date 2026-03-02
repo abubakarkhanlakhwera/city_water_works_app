@@ -100,6 +100,7 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Schemes'),
@@ -159,64 +160,129 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
                           },
                           child: Padding(
                             padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Icon(Icons.water_drop, color: AppColors.primary),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
+                            child: isCompact
+                                ? Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        scheme.schemeName,
-                                        style: Theme.of(context).textTheme.titleLarge,
-                                      ),
-                                      const SizedBox(height: 4),
                                       Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primary.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                            child:
+                                                const Icon(Icons.water_drop, color: AppColors.primary),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Text(
+                                              scheme.schemeName,
+                                              style: Theme.of(context).textTheme.titleLarge,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          PopupMenuButton<String>(
+                                            onSelected: (value) {
+                                              if (value == 'edit') _editScheme(scheme);
+                                              if (value == 'delete') _deleteScheme(scheme);
+                                            },
+                                            itemBuilder: (ctx) => [
+                                              const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                                              const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 12,
+                                        runSpacing: 6,
                                         children: [
                                           _InfoChip(
                                             icon: Icons.settings,
                                             label: '${scheme.setCount} Sets',
                                           ),
-                                          const SizedBox(width: 12),
                                           _InfoChip(
                                             icon: Icons.currency_rupee,
                                             label: CurrencyUtils.formatAmountShort(scheme.totalAmount),
                                           ),
                                         ],
                                       ),
-                                      if (scheme.description != null && scheme.description!.isNotEmpty)
+                                      if (scheme.description != null &&
+                                          scheme.description!.isNotEmpty)
                                         Padding(
-                                          padding: const EdgeInsets.only(top: 4),
+                                          padding: const EdgeInsets.only(top: 6),
                                           child: Text(
                                             scheme.description!,
                                             style: Theme.of(context).textTheme.bodySmall,
-                                            maxLines: 1,
+                                            maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
                                     ],
+                                  )
+                                : Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child:
+                                            const Icon(Icons.water_drop, color: AppColors.primary),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              scheme.schemeName,
+                                              style: Theme.of(context).textTheme.titleLarge,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Row(
+                                              children: [
+                                                _InfoChip(
+                                                  icon: Icons.settings,
+                                                  label: '${scheme.setCount} Sets',
+                                                ),
+                                                const SizedBox(width: 12),
+                                                _InfoChip(
+                                                  icon: Icons.currency_rupee,
+                                                  label: CurrencyUtils.formatAmountShort(scheme.totalAmount),
+                                                ),
+                                              ],
+                                            ),
+                                            if (scheme.description != null &&
+                                                scheme.description!.isNotEmpty)
+                                              Padding(
+                                                padding: const EdgeInsets.only(top: 4),
+                                                child: Text(
+                                                  scheme.description!,
+                                                  style: Theme.of(context).textTheme.bodySmall,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuButton<String>(
+                                        onSelected: (value) {
+                                          if (value == 'edit') _editScheme(scheme);
+                                          if (value == 'delete') _deleteScheme(scheme);
+                                        },
+                                        itemBuilder: (ctx) => [
+                                          const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                                          const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                        ],
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                PopupMenuButton<String>(
-                                  onSelected: (value) {
-                                    if (value == 'edit') _editScheme(scheme);
-                                    if (value == 'delete') _deleteScheme(scheme);
-                                  },
-                                  itemBuilder: (ctx) => [
-                                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                                  ],
-                                ),
-                              ],
-                            ),
                           ),
                         ),
                       );

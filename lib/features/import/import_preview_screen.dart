@@ -111,26 +111,36 @@ class _ImportPreviewScreenState extends State<ImportPreviewScreen> {
   @override
   Widget build(BuildContext context) {
     if (_result != null) return _buildResultView();
+    final isCompact = MediaQuery.of(context).size.width < 600;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Import Preview')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(isCompact ? 12 : 16),
         children: [
           // File info
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  const Icon(Icons.description, color: AppColors.primary),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(widget.fileName,
-                        style: Theme.of(context).textTheme.titleMedium),
-                  ),
-                ],
-              ),
+              child: isCompact
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.description, color: AppColors.primary),
+                        const SizedBox(height: 8),
+                        Text(widget.fileName, style: Theme.of(context).textTheme.titleMedium),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        const Icon(Icons.description, color: AppColors.primary),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(widget.fileName,
+                              style: Theme.of(context).textTheme.titleMedium),
+                        ),
+                      ],
+                    ),
             ),
           ),
           const SizedBox(height: 16),
@@ -167,10 +177,11 @@ class _ImportPreviewScreenState extends State<ImportPreviewScreen> {
                 children: [
                   Text('Summary', style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 12),
-                  _summaryRow('Sets', _totalSets.toString()),
-                  _summaryRow('Machinery', _totalMachinery.toString()),
-                  _summaryRow('Billing Entries', _totalEntries.toString()),
-                  _summaryRow('Total Amount', CurrencyUtils.formatAmount(_totalAmount)),
+                  _summaryRow('Sets', _totalSets.toString(), compact: isCompact),
+                  _summaryRow('Machinery', _totalMachinery.toString(), compact: isCompact),
+                  _summaryRow('Billing Entries', _totalEntries.toString(), compact: isCompact),
+                  _summaryRow('Total Amount', CurrencyUtils.formatAmount(_totalAmount),
+                      compact: isCompact),
                 ],
               ),
             ),
@@ -295,101 +306,109 @@ class _ImportPreviewScreenState extends State<ImportPreviewScreen> {
   Widget _buildResultView() {
     final r = _result!;
     final hasErrors = r.errors.isNotEmpty;
+    final isCompact = MediaQuery.of(context).size.width < 600;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Import Complete')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Icon(
-              hasErrors ? Icons.warning : Icons.check_circle,
-              size: 80,
-              color: hasErrors ? AppColors.warning : AppColors.success,
+      body: ListView(
+        padding: EdgeInsets.all(isCompact ? 16 : 24),
+        children: [
+          Icon(
+            hasErrors ? Icons.warning : Icons.check_circle,
+            size: 80,
+            color: hasErrors ? AppColors.warning : AppColors.success,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            hasErrors ? 'Import Completed with Warnings' : 'Import Successful!',
+            style: Theme.of(context).textTheme.headlineSmall,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  _summaryRow('Schemes', r.schemesImported.toString(), compact: isCompact),
+                  _summaryRow('Sets', r.setsImported.toString(), compact: isCompact),
+                  _summaryRow('Machinery', r.machineryImported.toString(), compact: isCompact),
+                  _summaryRow('Entries', r.entriesImported.toString(), compact: isCompact),
+                ],
+              ),
             ),
+          ),
+          if (r.warnings.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Text(
-              hasErrors ? 'Import Completed with Warnings' : 'Import Successful!',
-              style: Theme.of(context).textTheme.headlineSmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
             Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    _summaryRow('Schemes', r.schemesImported.toString()),
-                    _summaryRow('Sets', r.setsImported.toString()),
-                    _summaryRow('Machinery', r.machineryImported.toString()),
-                    _summaryRow('Entries', r.entriesImported.toString()),
-                  ],
+              color: AppColors.warning.withOpacity(0.1),
+              child: ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(12),
+                itemCount: r.warnings.length,
+                itemBuilder: (ctx, i) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text('• ${r.warnings[i]}', style: const TextStyle(fontSize: 13)),
                 ),
-              ),
-            ),
-            if (r.warnings.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Expanded(
-                child: Card(
-                  color: AppColors.warning.withOpacity(0.1),
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: r.warnings.length,
-                    itemBuilder: (ctx, i) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text('• ${r.warnings[i]}',
-                          style: const TextStyle(fontSize: 13)),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-            if (r.errors.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Expanded(
-                child: Card(
-                  color: AppColors.error.withOpacity(0.1),
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: r.errors.length,
-                    itemBuilder: (ctx, i) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text('• ${r.errors[i]}',
-                          style: const TextStyle(fontSize: 13, color: AppColors.error)),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: () {
-                  // Pop back to root
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                },
-                child: const Text('Done'),
               ),
             ),
           ],
-        ),
+          if (r.errors.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Card(
+              color: AppColors.error.withOpacity(0.1),
+              child: ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(12),
+                itemCount: r.errors.length,
+                itemBuilder: (ctx, i) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text('• ${r.errors[i]}',
+                      style: const TextStyle(fontSize: 13, color: AppColors.error)),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              onPressed: () {
+                // Pop back to root
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              },
+              child: const Text('Done'),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _summaryRow(String label, String value) {
+  Widget _summaryRow(String label, String value, {bool compact = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 14)),
-          Text(value,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        ],
-      ),
+      child: compact
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 14)),
+                const SizedBox(height: 2),
+                Text(value,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              ],
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 14)),
+                Text(value,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              ],
+            ),
     );
   }
 }

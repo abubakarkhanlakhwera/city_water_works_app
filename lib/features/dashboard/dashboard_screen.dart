@@ -381,6 +381,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildPanelShell({required String title, required Widget child, Widget? trailing}) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -391,14 +392,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(title,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-              if (trailing != null) trailing,
-            ],
-          ),
+          if (isCompact)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                if (trailing != null) ...[
+                  const SizedBox(height: 8),
+                  trailing,
+                ],
+              ],
+            )
+          else
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(title,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                if (trailing != null) trailing,
+              ],
+            ),
           const SizedBox(height: 10),
           child,
         ],
@@ -753,8 +767,9 @@ class _DashboardKpiCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
     return Container(
-      constraints: const BoxConstraints(minWidth: 200),
+      constraints: BoxConstraints(minWidth: isCompact ? 140 : 200),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.04),

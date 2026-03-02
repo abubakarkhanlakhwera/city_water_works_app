@@ -79,114 +79,112 @@ class _ImportScreenState extends State<ImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
     return Scaffold(
       appBar: AppBar(title: const Text('Import from Excel')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Instructions card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.info_outline, color: AppColors.primary),
-                        const SizedBox(width: 8),
-                        Text('Import Instructions',
-                            style: Theme.of(context).textTheme.titleMedium),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Select an Excel (.xlsx) file to import billing records.\n\n'
-                      'Expected format:\n'
-                      '• Each sheet represents a Set (e.g., "Tanky 2")\n'
-                      '• Sheets contain machinery sub-heads (Motor, Pump, Transformer, etc.)\n'
-                      '• Columns: Sr.No, Date, Voucher No., Amount, Reg. Page No.\n\n'
-                      'The system will parse and preview the data before importing.',
-                      style: TextStyle(fontSize: 14, height: 1.5),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // File picker area
-            InkWell(
-              onTap: _isParsing ? null : _pickFile,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.primary, width: 2, style: BorderStyle.solid),
-                  borderRadius: BorderRadius.circular(12),
-                  color: AppColors.primary.withOpacity(0.03),
-                ),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.upload_file,
-                      size: 64,
-                      color: _isParsing ? AppColors.textHint : AppColors.primary,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _isParsing
-                          ? 'Parsing...'
-                          : _selectedFilePath != null
-                              ? _selectedFilePath!.split(Platform.pathSeparator).last
-                              : 'Tap to select Excel file (.xlsx)',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: _isParsing ? AppColors.textHint : AppColors.primary,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                    if (_isParsing) ...[
-                      const SizedBox(height: 16),
-                      const CircularProgressIndicator(),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-
-            // Error
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 16),
-              Card(
-                color: AppColors.error.withOpacity(0.1),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
+      body: ListView(
+        padding: EdgeInsets.all(isCompact ? 16 : 24),
+        children: [
+          // Instructions card
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      const Icon(Icons.error, color: AppColors.error),
+                      const Icon(Icons.info_outline, color: AppColors.primary),
                       const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(_errorMessage!,
-                            style: const TextStyle(color: AppColors.error)),
-                      ),
+                      Text('Import Instructions',
+                          style: Theme.of(context).textTheme.titleMedium),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Select an Excel (.xlsx) file to import billing records.\n\n'
+                    'Expected format:\n'
+                    '• Each sheet represents a Set (e.g., "Tanky 2")\n'
+                    '• Sheets contain machinery sub-heads (Motor, Pump, Transformer, etc.)\n'
+                    '• Columns: Sr.No, Date, Voucher No., Amount, Reg. Page No.\n\n'
+                    'The system will parse and preview the data before importing.',
+                    style: TextStyle(fontSize: 14, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // File picker area
+          InkWell(
+            onTap: _isParsing ? null : _pickFile,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.primary, width: 2, style: BorderStyle.solid),
+                borderRadius: BorderRadius.circular(12),
+                color: AppColors.primary.withOpacity(0.03),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.upload_file,
+                    size: 64,
+                    color: _isParsing ? AppColors.textHint : AppColors.primary,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _isParsing
+                        ? 'Parsing...'
+                        : _selectedFilePath != null
+                            ? _selectedFilePath!.split(Platform.pathSeparator).last
+                            : 'Tap to select Excel file (.xlsx)',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: _isParsing ? AppColors.textHint : AppColors.primary,
+                        ),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (_isParsing) ...[
+                    const SizedBox(height: 16),
+                    const CircularProgressIndicator(),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          // Error
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 16),
+            Card(
+              color: AppColors.error.withOpacity(0.1),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error, color: AppColors.error),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(_errorMessage!,
+                          style: const TextStyle(color: AppColors.error)),
+                    ),
+                  ],
                 ),
               ),
-            ],
-
-            const Spacer(),
-
-            // Info footer
-            Text(
-              'Supported format: .xlsx (Microsoft Excel)',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
-              textAlign: TextAlign.center,
             ),
           ],
-        ),
+
+          const SizedBox(height: 24),
+
+          // Info footer
+          Text(
+            'Supported format: .xlsx (Microsoft Excel)',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }

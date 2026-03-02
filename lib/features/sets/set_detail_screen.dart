@@ -156,6 +156,7 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
     return Scaffold(
       appBar: AppBar(
         title: Text(_set?.setLabel ?? 'Set Detail'),
@@ -210,10 +211,8 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
                         Card(
                           child: Padding(
                             padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
+                            child: isCompact
+                                ? Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(_set!.setLabel,
@@ -227,7 +226,7 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
                                               ),
                                         ),
                                       ],
-                                      const SizedBox(height: 4),
+                                      const SizedBox(height: 6),
                                       Text(
                                         'Total: ${CurrencyUtils.formatAmount(_set!.totalAmount)}',
                                         style: const TextStyle(
@@ -236,15 +235,48 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
                                           fontSize: 16,
                                         ),
                                       ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        '${_machineryList.length} machinery',
+                                        style: Theme.of(context).textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  )
+                                : Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(_set!.setLabel,
+                                                style: Theme.of(context).textTheme.titleLarge),
+                                            if (_scheme != null) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                '${_scheme!.schemeName} ${_set!.setLabel.replaceFirst('Set No. ', 'Set No.')}',
+                                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                              ),
+                                            ],
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Total: ${CurrencyUtils.formatAmount(_set!.totalAmount)}',
+                                              style: const TextStyle(
+                                                color: AppColors.primary,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Text(
+                                        '${_machineryList.length} machinery',
+                                        style: Theme.of(context).textTheme.bodySmall,
+                                      ),
                                     ],
                                   ),
-                                ),
-                                Text(
-                                  '${_machineryList.length} machinery',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
                           ),
                         ),
                         const SizedBox(height: 16),

@@ -240,12 +240,13 @@ class _ExportScreenState extends State<ExportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
     return Scaffold(
       appBar: AppBar(title: const Text('Export')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(isCompact ? 12 : 16),
               children: [
                 // Scope selection
                 Text('Export Scope', style: Theme.of(context).textTheme.titleMedium),

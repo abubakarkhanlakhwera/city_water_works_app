@@ -93,6 +93,7 @@ class _SchemeDetailScreenState extends State<SchemeDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 600;
     return Scaffold(
       appBar: AppBar(
         title: Text(_scheme?.schemeName ?? 'Scheme Detail'),
@@ -150,24 +151,30 @@ class _SchemeDetailScreenState extends State<SchemeDetailScreen> {
                         Card(
                           child: Padding(
                             padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Icon(Icons.water_drop, color: AppColors.primary, size: 28),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
+                            child: isCompact
+                                ? Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(_scheme!.schemeName,
-                                          style: Theme.of(context).textTheme.titleLarge),
-                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primary.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                            child: const Icon(Icons.water_drop,
+                                                color: AppColors.primary, size: 28),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Text(_scheme!.schemeName,
+                                                style: Theme.of(context).textTheme.titleLarge,
+                                                overflow: TextOverflow.ellipsis),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
                                       Text(
                                         'Total: ${CurrencyUtils.formatAmount(_scheme!.totalAmount)}',
                                         style: TextStyle(
@@ -177,10 +184,39 @@ class _SchemeDetailScreenState extends State<SchemeDetailScreen> {
                                         ),
                                       ),
                                     ],
+                                  )
+                                : Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: const Icon(Icons.water_drop,
+                                            color: AppColors.primary, size: 28),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(_scheme!.schemeName,
+                                                style: Theme.of(context).textTheme.titleLarge),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Total: ${CurrencyUtils.formatAmount(_scheme!.totalAmount)}',
+                                              style: TextStyle(
+                                                color: AppColors.primary,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
-                            ),
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -205,64 +241,129 @@ class _SchemeDetailScreenState extends State<SchemeDetailScreen> {
                                 },
                                 child: Padding(
                                   padding: const EdgeInsets.all(16),
-                                  child: Row(
-                                    children: [
-                                      CircleAvatar(
-                                        backgroundColor: AppColors.accent.withOpacity(0.15),
-                                        child: Text(
-                                          '${set.setNumber}',
-                                          style: const TextStyle(
-                                            color: AppColors.accent,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Column(
+                                  child: isCompact
+                                      ? Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Text(set.setLabel,
-                                                style: Theme.of(context).textTheme.titleMedium),
-                                            const SizedBox(height: 4),
                                             Row(
                                               children: [
-                                                Icon(Icons.precision_manufacturing,
-                                                    size: 14, color: AppColors.textSecondary),
-                                                const SizedBox(width: 4),
-                                                Text('${set.machineryCount} machinery',
-                                                    style: Theme.of(context).textTheme.bodySmall),
+                                                CircleAvatar(
+                                                  backgroundColor: AppColors.accent.withOpacity(0.15),
+                                                  child: Text(
+                                                    '${set.setNumber}',
+                                                    style: const TextStyle(
+                                                      color: AppColors.accent,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
                                                 const SizedBox(width: 12),
-                                                Icon(Icons.receipt,
-                                                    size: 14, color: AppColors.textSecondary),
-                                                const SizedBox(width: 4),
-                                                Text('${set.entryCount} entries',
-                                                    style: Theme.of(context).textTheme.bodySmall),
+                                                Expanded(
+                                                  child: Text(set.setLabel,
+                                                      style: Theme.of(context).textTheme.titleMedium,
+                                                      overflow: TextOverflow.ellipsis),
+                                                ),
+                                                GestureDetector(
+                                                  onTap: () => _deleteSet(set),
+                                                  child: const Icon(Icons.delete_outline,
+                                                      size: 20, color: AppColors.error),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Wrap(
+                                              spacing: 12,
+                                              runSpacing: 6,
+                                              children: [
+                                                Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(Icons.precision_manufacturing,
+                                                        size: 14, color: AppColors.textSecondary),
+                                                    const SizedBox(width: 4),
+                                                    Text('${set.machineryCount} machinery',
+                                                        style: Theme.of(context).textTheme.bodySmall),
+                                                  ],
+                                                ),
+                                                Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(Icons.receipt,
+                                                        size: 14, color: AppColors.textSecondary),
+                                                    const SizedBox(width: 4),
+                                                    Text('${set.entryCount} entries',
+                                                        style: Theme.of(context).textTheme.bodySmall),
+                                                  ],
+                                                ),
+                                                Text(
+                                                  CurrencyUtils.formatAmount(set.totalAmount),
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: AppColors.primary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        )
+                                      : Row(
+                                          children: [
+                                            CircleAvatar(
+                                              backgroundColor: AppColors.accent.withOpacity(0.15),
+                                              child: Text(
+                                                '${set.setNumber}',
+                                                style: const TextStyle(
+                                                  color: AppColors.accent,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(set.setLabel,
+                                                      style: Theme.of(context).textTheme.titleMedium),
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    children: [
+                                                      Icon(Icons.precision_manufacturing,
+                                                          size: 14, color: AppColors.textSecondary),
+                                                      const SizedBox(width: 4),
+                                                      Text('${set.machineryCount} machinery',
+                                                          style: Theme.of(context).textTheme.bodySmall),
+                                                      const SizedBox(width: 12),
+                                                      Icon(Icons.receipt,
+                                                          size: 14, color: AppColors.textSecondary),
+                                                      const SizedBox(width: 4),
+                                                      Text('${set.entryCount} entries',
+                                                          style: Theme.of(context).textTheme.bodySmall),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  CurrencyUtils.formatAmount(set.totalAmount),
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: AppColors.primary,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                GestureDetector(
+                                                  onTap: () => _deleteSet(set),
+                                                  child: const Icon(Icons.delete_outline,
+                                                      size: 20, color: AppColors.error),
+                                                ),
                                               ],
                                             ),
                                           ],
                                         ),
-                                      ),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.end,
-                                        children: [
-                                          Text(
-                                            CurrencyUtils.formatAmount(set.totalAmount),
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: AppColors.primary,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          GestureDetector(
-                                            onTap: () => _deleteSet(set),
-                                            child: const Icon(Icons.delete_outline,
-                                                size: 20, color: AppColors.error),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
                                 ),
                               ),
                             )),
