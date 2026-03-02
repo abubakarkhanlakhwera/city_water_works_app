@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -50,6 +51,7 @@ class ExportService {
         maxRows = machineryEntries.length;
       }
     }
+    maxRows = math.max(maxRows, 2);
 
     final pdf = pw.Document();
 
@@ -110,9 +112,9 @@ class ExportService {
                       final mEntries = entriesByMachinery[machinery.machineryId!] ?? [];
                       final entry = rowIndex < mEntries.length ? mEntries[rowIndex] : null;
                       return [
-                        _pdfCell(entry?.entryDate ?? '', width: 70),
-                        _pdfCell(entry?.voucherNo?.toString() ?? '', width: 70, align: pw.TextAlign.center),
-                        _pdfCell(entry != null ? _formatAmount(entry.amount) : '', width: 70, align: pw.TextAlign.right),
+                        _pdfCell(entry?.entryDate ?? '-', width: 70),
+                        _pdfCell(entry?.voucherNo?.toString() ?? '-', width: 70, align: pw.TextAlign.center),
+                        _pdfCell(entry != null ? _formatAmount(entry.amount) : '-', width: 70, align: pw.TextAlign.right),
                       ];
                     }),
                   ],
