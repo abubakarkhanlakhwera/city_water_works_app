@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/services/backup_service.dart';
@@ -17,6 +18,10 @@ class _BackupScreenState extends State<BackupScreen> {
   List<BackupInfo> _backups = [];
   bool _isLoading = true;
   bool _isProcessing = false;
+
+  static const _backupActionDone = 'done';
+  static const _backupActionShare = 'share';
+  static const _backupActionSaveDownloads = 'save_downloads';
 
   @override
   void initState() {
@@ -44,24 +49,40 @@ class _BackupScreenState extends State<BackupScreen> {
           const SnackBar(content: Text('Backup created successfully')),
         );
 
-        // Offer to share
-        final share = await showDialog<bool>(
+        final action = await showDialog<String>(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Backup Created'),
             content: Text('Saved to:\n$filePath'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('OK')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, _backupActionDone),
+                child: const Text('Done'),
+              ),
+              TextButton.icon(
+                onPressed: () => Navigator.pop(ctx, _backupActionSaveDownloads),
+                icon: const Icon(Icons.download),
+                label: const Text('Save to Downloads'),
+              ),
               ElevatedButton.icon(
-                onPressed: () => Navigator.pop(ctx, true),
+                onPressed: () => Navigator.pop(ctx, _backupActionShare),
                 icon: const Icon(Icons.share),
                 label: const Text('Share'),
               ),
             ],
           ),
         );
-        if (share == true) {
+
+        if (action == _backupActionShare) {
           await Share.shareXFiles([XFile(filePath)]);
+        }
+
+        if (action == _backupActionSaveDownloads) {
+          final downloadsPath = await _backupService.saveBackupToDownloads(filePath);
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Backup saved to Downloads:\n$downloadsPath')),
+          );
         }
       }
     } catch (e) {
@@ -77,15 +98,29 @@ class _BackupScreenState extends State<BackupScreen> {
 
   Future<void> _restoreBackup({String? filePath}) async {
     String? path = filePath;
+    Uint8List? pickedBytes;
 
     if (path == null) {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
+        type: FileType.custom,
+        allowedExtensions: const ['cww', 'zip'],
         allowMultiple: false,
+        withData: true,
       );
-      if (result == null || result.files.single.path == null) return;
-      path = result.files.single.path!;
+      if (result == null) return;
+      final file = result.files.single;
+      path = file.path;
+      pickedBytes = file.bytes;
+      if (path == null && (pickedBytes == null || pickedBytes.isEmpty)) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to read selected backup file.')),
+        );
+        return;
+      }
     }
+
+    if (!mounted) return;
 
     // Confirm
     final confirmed = await showDialog<bool>(
@@ -110,7 +145,11 @@ class _BackupScreenState extends State<BackupScreen> {
 
     setState(() => _isProcessing = true);
     try {
-      await _backupService.restoreBackup(path!);
+      if (path != null) {
+        await _backupService.restoreBackup(path);
+      } else {
+        await _backupService.restoreBackupBytes(pickedBytes!);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Backup restored successfully. Restarting...')),
@@ -208,7 +247,7 @@ class _BackupScreenState extends State<BackupScreen> {
                 Card(
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: AppColors.accent.withOpacity(0.8),
+                      backgroundColor: AppColors.accent.withValues(alpha: 0.8),
                       child: const Icon(Icons.restore, color: Colors.white),
                     ),
                     title: const Text('Restore from File'),
@@ -276,7 +315,7 @@ class _BackupScreenState extends State<BackupScreen> {
                         ?.copyWith(color: AppColors.error)),
                 const SizedBox(height: 8),
                 Card(
-                  color: AppColors.error.withOpacity(0.05),
+                  color: AppColors.error.withValues(alpha: 0.05),
                   child: ListTile(
                     leading: const Icon(Icons.delete_forever, color: AppColors.error),
                     title: const Text('Delete All Data',

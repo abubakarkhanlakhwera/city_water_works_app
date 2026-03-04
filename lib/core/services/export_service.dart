@@ -229,11 +229,27 @@ class ExportService {
   // ─────────────────── PDF Export ───────────────────
 
   Future<Uint8List> exportSetToPdf(int setId) async {
+    return _exportSetToPdfInternal(setId);
+  }
+
+  Future<Uint8List> exportSingleMachineryToPdf(int setId, int machineryId) async {
+    final machineryList = await _machineryDao.getMachineryForSet(setId);
+    final selected = machineryList.where((m) => m.machineryId == machineryId).firstOrNull;
+    if (selected == null) {
+      throw Exception('Selected machinery not found');
+    }
+    return _exportSetToPdfInternal(setId, machineryOverride: [selected]);
+  }
+
+  Future<Uint8List> _exportSetToPdfInternal(int setId, {List<Machinery>? machineryOverride}) async {
     final setModel = await _setsDao.getSetById(setId);
     if (setModel == null) throw Exception('Set not found');
 
     final scheme = await _schemesDao.getSchemeById(setModel.schemeId);
-    final machineryList = await _machineryDao.getMachineryForSet(setId);
+    final machineryList = machineryOverride ?? await _machineryDao.getMachineryForSet(setId);
+    if (machineryList.isEmpty) {
+      throw Exception('No machinery found in selected set');
+    }
     final entries = await _entriesDao.getEntriesForSet(setId);
 
     final entriesByMachinery = <int, List<dynamic>>{};

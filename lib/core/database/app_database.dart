@@ -25,7 +25,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 4,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
       onConfigure: (db) async {
@@ -150,7 +150,7 @@ class AppDatabase {
     await db.insert('machinery_types', {
       'type_name': 'Miscellaneous',
       'attributes':
-          '[{"name":"Particular","input_type":"text","options":[],"required":false}]',
+          '[{"name":"Item Type","input_type":"dropdown","options":["Leakage","Pipes","Starter","Valves"],"required":true},{"name":"Sub Item","input_type":"dropdown","options":["Main Leakage","Joint Leakage","Service Leakage","GI Pipe","PVC Pipe","HDPE Pipe","Electrical Head","Starter","Starter Relay","Gate Valve","Air Valve","Check Valve"],"required":false},{"name":"Size (Inches)","input_type":"dropdown","options":["3 Inches","4 Inches","5 Inches","6 Inches","8 Inches","9 Inches","12 Inches","15 Inches","18 Inches","24 Inches"],"required":false},{"name":"Starter Type","input_type":"dropdown","options":["Electrical Head","Starter"],"required":false}]',
       'created_at': now,
     });
   }
@@ -198,6 +198,30 @@ class AppDatabase {
       if (existingUsers.isEmpty) {
         await _insertDefaultUser(db);
       }
+    }
+
+    if (oldVersion < 3) {
+      await db.update(
+        'machinery_types',
+        {
+          'attributes':
+              '[{"name":"Item Type","input_type":"dropdown","options":["Leakage","Pipes","Starter","Valves"],"required":true},{"name":"Size (Inches)","input_type":"dropdown","options":["3 Inches","4 Inches","5 Inches","6 Inches","8 Inches","9 Inches","12 Inches","15 Inches","18 Inches","24 Inches"],"required":false},{"name":"Starter Type","input_type":"dropdown","options":["Electrical Head","Starter"],"required":false}]',
+        },
+        where: 'LOWER(type_name) = ?',
+        whereArgs: ['miscellaneous'],
+      );
+    }
+
+    if (oldVersion < 4) {
+      await db.update(
+        'machinery_types',
+        {
+          'attributes':
+              '[{"name":"Item Type","input_type":"dropdown","options":["Leakage","Pipes","Starter","Valves"],"required":true},{"name":"Sub Item","input_type":"dropdown","options":["Main Leakage","Joint Leakage","Service Leakage","GI Pipe","PVC Pipe","HDPE Pipe","Electrical Head","Starter","Starter Relay","Gate Valve","Air Valve","Check Valve"],"required":false},{"name":"Size (Inches)","input_type":"dropdown","options":["3 Inches","4 Inches","5 Inches","6 Inches","8 Inches","9 Inches","12 Inches","15 Inches","18 Inches","24 Inches"],"required":false},{"name":"Starter Type","input_type":"dropdown","options":["Electrical Head","Starter"],"required":false}]',
+        },
+        where: 'LOWER(type_name) = ?',
+        whereArgs: ['miscellaneous'],
+      );
     }
   }
 

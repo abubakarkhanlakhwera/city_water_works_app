@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:archive/archive.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../database/app_database.dart';
 
@@ -20,6 +22,29 @@ class BackupService {
       await backupDir.create(recursive: true);
     }
     return backupDir;
+  }
+
+  Future<Directory> _getPublicDownloadsDirectory() async {
+    if (Platform.isAndroid) {
+      final androidDownloads = Directory('/storage/emulated/0/Download');
+      if (await androidDownloads.exists()) {
+        return androidDownloads;
+      }
+      try {
+        await androidDownloads.create(recursive: true);
+        return androidDownloads;
+      } catch (_) {}
+    }
+
+    final downloadsDir = await getDownloadsDirectory();
+    if (downloadsDir != null) {
+      if (!await downloadsDir.exists()) {
+        await downloadsDir.create(recursive: true);
+      }
+      return downloadsDir;
+    }
+
+    return await getApplicationDocumentsDirectory();
   }
 
   /// Create a backup file (.cww = zip of DB + metadata)
@@ -62,6 +87,18 @@ class BackupService {
     return backupFile.path;
   }
 
+  Future<String> saveBackupToDownloads(String backupPath) async {
+    final source = File(backupPath);
+    if (!await source.exists()) {
+      throw Exception('Backup file not found');
+    }
+
+    final downloadsDir = await _getPublicDownloadsDirectory();
+    final target = File(p.join(downloadsDir.path, p.basename(backupPath)));
+    await source.copy(target.path);
+    return target.path;
+  }
+
   /// Restore from a backup file
   Future<void> restoreBackup(String backupPath) async {
     final backupFile = File(backupPath);
@@ -70,6 +107,14 @@ class BackupService {
     }
 
     final bytes = await backupFile.readAsBytes();
+    await _restoreBackupFromBytes(bytes);
+  }
+
+  Future<void> restoreBackupBytes(Uint8List bytes) async {
+    await _restoreBackupFromBytes(bytes);
+  }
+
+  Future<void> _restoreBackupFromBytes(Uint8List bytes) async {
     final archive = ZipDecoder().decodeBytes(bytes);
 
     // Verify metadata
@@ -86,7 +131,7 @@ class BackupService {
     }
 
     if (metadataFile != null) {
-      final metadata = jsonDecode(utf8.decode(metadataFile.content));
+      final metadata = jsonDecode(utf8.decode((metadataFile.content as List<int>)));
       final schemaVersion = metadata['schema_version'] ?? 1;
       // Validate schema version
       if (schemaVersion > 1) {
@@ -107,7 +152,7 @@ class BackupService {
     }
 
     // Write restored DB
-    await targetFile.writeAsBytes(dbBackupFile.content);
+    await targetFile.writeAsBytes(dbBackupFile.content as List<int>);
 
     // Re-initialize database
     await _db.database;

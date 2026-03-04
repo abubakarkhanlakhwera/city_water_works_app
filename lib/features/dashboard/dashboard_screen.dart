@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:path/path.dart' as p;
+import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/database/daos/schemes_dao.dart';
 import '../../core/database/daos/sets_dao.dart';
 import '../../core/database/daos/billing_entries_dao.dart';
@@ -200,10 +204,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final now = DateTime.now();
       final filename =
           'Machinery_Report_${now.day.toString().padLeft(2, '0')}-${now.month.toString().padLeft(2, '0')}-${now.year}.pdf';
-        final path = await _exportService.savePdfToDownloads(bytes, filename);
+      final path = await _exportService.savePdf(bytes, filename);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Machinery report PDF saved: $path')),
+      _showExportSuccessDialog(
+        path: path,
+        title: 'Machinery PDF Ready',
+        shareText: 'City Water Works — Machinery Report',
       );
     } catch (e) {
       if (!mounted) return;
@@ -224,10 +230,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final now = DateTime.now();
       final filename =
           'All_Machinery_Report_${now.day.toString().padLeft(2, '0')}-${now.month.toString().padLeft(2, '0')}-${now.year}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.pdf';
-      final path = await _exportService.savePdfToDownloads(bytes, filename);
+      final path = await _exportService.savePdf(bytes, filename);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('All machinery PDF saved: $path')),
+      _showExportSuccessDialog(
+        path: path,
+        title: 'All Machinery PDF Ready',
+        shareText: 'City Water Works — Complete Machinery Report',
       );
     } catch (e) {
       if (!mounted) return;
@@ -237,6 +245,95 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } finally {
       if (mounted) setState(() => _isDownloadingAllReport = false);
     }
+  }
+
+  Future<String> _saveAsAndMoveExport(String generatedPath) async {
+    final defaultName = p.basename(generatedPath);
+
+    String? pickedPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save PDF File',
+      fileName: defaultName,
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+    );
+
+    pickedPath ??= await _pickPathFromDirectory(defaultName);
+
+    if (pickedPath == null || pickedPath.trim().isEmpty) {
+      return generatedPath;
+    }
+
+    final sourceFile = File(generatedPath);
+    final destinationFile = File(pickedPath);
+
+    if (await destinationFile.exists()) {
+      await destinationFile.delete();
+    }
+
+    await sourceFile.copy(destinationFile.path);
+    return destinationFile.path;
+  }
+
+  Future<String?> _pickPathFromDirectory(String defaultName) async {
+    final directory = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Select Folder to Save PDF',
+    );
+    if (directory == null || directory.trim().isEmpty) return null;
+    return p.join(directory, defaultName);
+  }
+
+  void _showExportSuccessDialog({
+    required String path,
+    required String title,
+    required String shareText,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.check_circle, color: AppColors.success, size: 42),
+            const SizedBox(height: 10),
+            Text('File prepared at:\n$path', style: const TextStyle(fontSize: 13)),
+          ],
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () async {
+              final savedPath = await _saveAsAndMoveExport(path);
+              if (!mounted || !ctx.mounted) return;
+              Navigator.pop(ctx);
+              _showExportSuccessDialog(
+                path: savedPath,
+                title: title,
+                shareText: shareText,
+              );
+            },
+            icon: const Icon(Icons.save_alt),
+            label: const Text('Choose Save Path'),
+          ),
+          TextButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Share.shareXFiles([XFile(path)], text: shareText);
+            },
+            icon: const Icon(Icons.chat),
+            label: const Text('WhatsApp Share'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Share.shareXFiles([XFile(path)], text: shareText);
+            },
+            icon: const Icon(Icons.share),
+            label: const Text('Share'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _performSearch(String query) async {

@@ -6,6 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/database/daos/schemes_dao.dart';
 import '../../core/database/daos/sets_dao.dart';
+import '../../core/database/daos/machinery_dao.dart';
+import '../../core/models/machinery.dart';
 import '../../core/models/scheme.dart';
 import '../../core/models/set_model.dart';
 import '../../core/services/export_service.dart';
@@ -24,12 +26,15 @@ class ExportScreen extends StatefulWidget {
 class _ExportScreenState extends State<ExportScreen> {
   final _schemesDao = SchemesDao();
   final _setsDao = SetsDao();
+  final _machineryDao = MachineryDao();
   final _exportService = ExportService();
 
   List<Scheme> _schemes = [];
   List<SetModel> _sets = [];
+  List<Machinery> _machineryForSet = [];
   Scheme? _selectedScheme;
   SetModel? _selectedSet;
+  Machinery? _selectedMachinery;
   String _exportFormat = 'pdf';
   String _exportScope = 'scheme';
 
@@ -59,6 +64,9 @@ class _ExportScreenState extends State<ExportScreen> {
           await _loadSets(scheme.schemeId!);
           if (widget.setId != null) {
             _selectedSet = _sets.where((s) => s.setId == widget.setId).firstOrNull;
+            if (_selectedSet != null) {
+              await _loadMachinery(_selectedSet!.setId!);
+            }
           }
           setState(() {});
         }
@@ -70,7 +78,21 @@ class _ExportScreenState extends State<ExportScreen> {
 
   Future<void> _loadSets(int schemeId) async {
     final sets = await _setsDao.getSetsForScheme(schemeId);
-    setState(() => _sets = sets);
+    if (!mounted) return;
+    setState(() {
+      _sets = sets;
+      _machineryForSet = [];
+      _selectedMachinery = null;
+    });
+  }
+
+  Future<void> _loadMachinery(int setId) async {
+    final machinery = await _machineryDao.getMachineryForSet(setId);
+    if (!mounted) return;
+    setState(() {
+      _machineryForSet = machinery;
+      _selectedMachinery = null;
+    });
   }
 
   Future<void> _export() async {
@@ -86,6 +108,12 @@ class _ExportScreenState extends State<ExportScreen> {
       );
       return;
     }
+    if (_selectedMachinery != null && _exportFormat != 'pdf') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Single machinery export is available for PDF only')),
+      );
+      return;
+    }
 
     setState(() => _isExporting = true);
 
@@ -96,7 +124,13 @@ class _ExportScreenState extends State<ExportScreen> {
       if (_exportFormat == 'pdf') {
         Uint8List pdfBytes;
         String filename;
-        if (_exportScope == 'set' && _selectedSet != null) {
+        if (_exportScope == 'set' && _selectedSet != null && _selectedMachinery != null) {
+          pdfBytes = await _exportService.exportSingleMachineryToPdf(
+            _selectedSet!.setId!,
+            _selectedMachinery!.machineryId!,
+          );
+          filename = _buildSuggestedFileName(extension: 'pdf');
+        } else if (_exportScope == 'set' && _selectedSet != null) {
           pdfBytes = await _exportService.exportSetToPdf(_selectedSet!.setId!);
           filename = _buildSuggestedFileName(extension: 'pdf');
         } else {
@@ -104,7 +138,7 @@ class _ExportScreenState extends State<ExportScreen> {
           filename = _buildSuggestedFileName(extension: 'pdf');
         }
         suggestedFileName = filename;
-        filePath = await _exportService.savePdf(pdfBytes, filename);
+        filePath = await _savePdfWithPathChoice(pdfBytes, filename);
       } else if (_exportFormat == 'excel') {
         suggestedFileName = _buildSuggestedFileName(extension: 'xlsx');
         filePath = await _exportService.exportSchemeToExcel(_selectedScheme!.schemeId!);
@@ -135,7 +169,7 @@ class _ExportScreenState extends State<ExportScreen> {
       final now = DateTime.now();
       final filename =
           'WaterSupplySchemeHistory_AllMachinery_${now.year.toString().padLeft(4, '0')}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.pdf';
-      final filePath = await _exportService.savePdfToDownloads(pdfBytes, filename);
+      final filePath = await _savePdfWithPathChoice(pdfBytes, filename);
 
       if (mounted) {
         _showExportSuccess(filePath, suggestedFileName: filename);
@@ -152,9 +186,15 @@ class _ExportScreenState extends State<ExportScreen> {
   }
 
   String _buildSuggestedFileName({required String extension}) {
+    final machineryTypeForName = (_selectedMachinery?.machineryType.trim().isNotEmpty ?? false)
+        ? _selectedMachinery!.machineryType.trim()
+        : 'Machinery';
+
     final rawBaseName = _exportScope == 'set' && _selectedSet != null
-        ? '${_selectedSet!.setLabel}_Export'
-        : '${_selectedScheme?.schemeName ?? 'Export'}_Export';
+      ? _selectedMachinery != null
+        ? '${_selectedSet!.setLabel}_${machineryTypeForName}_Export'
+        : '${_selectedSet!.setLabel}_Export'
+      : '${_selectedScheme?.schemeName ?? 'Export'}_Export';
 
     final safeBaseName = rawBaseName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
     return '$safeBaseName.$extension';
@@ -184,6 +224,44 @@ class _ExportScreenState extends State<ExportScreen> {
     return pickedPath;
   }
 
+  Future<String> _savePdfWithPathChoice(Uint8List bytes, String filename) async {
+    final pickedPath = await _pickExportPath(filename, const ['pdf']);
+    if (pickedPath == null || pickedPath.trim().isEmpty) {
+      return _exportService.savePdf(bytes, filename);
+    }
+
+    final destinationFile = File(pickedPath);
+    if (!await destinationFile.parent.exists()) {
+      await destinationFile.parent.create(recursive: true);
+    }
+    if (await destinationFile.exists()) {
+      await destinationFile.delete();
+    }
+
+    await destinationFile.writeAsBytes(bytes);
+    return destinationFile.path;
+  }
+
+  Future<String?> _pickExportPath(String defaultName, List<String> extensions) async {
+    String? pickedPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Choose where to save export',
+      fileName: defaultName,
+      type: FileType.custom,
+      allowedExtensions: extensions,
+    );
+
+    if (pickedPath == null || pickedPath.trim().isEmpty) {
+      final directory = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Select folder for export file',
+      );
+      if (directory != null && directory.trim().isNotEmpty) {
+        pickedPath = p.join(directory, defaultName);
+      }
+    }
+
+    return pickedPath;
+  }
+
   void _showExportSuccess(String path, {String? suggestedFileName}) {
     showDialog(
       context: context,
@@ -202,7 +280,7 @@ class _ExportScreenState extends State<ExportScreen> {
           TextButton.icon(
             onPressed: () async {
               final savedPath = await _saveAsAndMoveExport(path, suggestedFileName);
-              if (!mounted) return;
+              if (!mounted || !ctx.mounted) return;
               Navigator.pop(ctx);
               _showExportSuccess(savedPath, suggestedFileName: suggestedFileName);
             },
@@ -224,6 +302,14 @@ class _ExportScreenState extends State<ExportScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Close'),
+          ),
+          TextButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Share.shareXFiles([XFile(path)], text: 'City Water Works — Export File');
+            },
+            icon: const Icon(Icons.chat),
+            label: const Text('WhatsApp Share'),
           ),
           ElevatedButton.icon(
             onPressed: () {
@@ -261,13 +347,15 @@ class _ExportScreenState extends State<ExportScreen> {
                   onSelectionChanged: (v) => setState(() {
                     _exportScope = v.first;
                     _selectedSet = null;
+                    _selectedMachinery = null;
+                    _machineryForSet = [];
                   }),
                 ),
                 const SizedBox(height: 20),
 
                 // Scheme selector
                 DropdownButtonFormField<Scheme>(
-                  value: _selectedScheme,
+                  initialValue: _selectedScheme,
                   decoration: const InputDecoration(
                     labelText: 'Select Scheme',
                     border: OutlineInputBorder(),
@@ -279,6 +367,8 @@ class _ExportScreenState extends State<ExportScreen> {
                     setState(() {
                       _selectedScheme = s;
                       _selectedSet = null;
+                      _selectedMachinery = null;
+                      _machineryForSet = [];
                       _sets = [];
                     });
                     if (s != null) await _loadSets(s.schemeId!);
@@ -289,7 +379,7 @@ class _ExportScreenState extends State<ExportScreen> {
                 // Set selector (only if scope is 'set')
                 if (_exportScope == 'set') ...[
                   DropdownButtonFormField<SetModel>(
-                    value: _selectedSet,
+                    initialValue: _selectedSet,
                     decoration: const InputDecoration(
                       labelText: 'Select Set',
                       border: OutlineInputBorder(),
@@ -297,7 +387,37 @@ class _ExportScreenState extends State<ExportScreen> {
                     items: _sets
                         .map((s) => DropdownMenuItem(value: s, child: Text(s.setLabel)))
                         .toList(),
-                    onChanged: (s) => setState(() => _selectedSet = s),
+                    onChanged: (s) async {
+                      setState(() {
+                        _selectedSet = s;
+                        _selectedMachinery = null;
+                        _machineryForSet = [];
+                      });
+                      if (s != null) {
+                        await _loadMachinery(s.setId!);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<Machinery?>(
+                    initialValue: _selectedMachinery,
+                    decoration: const InputDecoration(
+                      labelText: 'Select Machinery',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      const DropdownMenuItem<Machinery?>(
+                        value: null,
+                        child: Text('All Machinery in this Set'),
+                      ),
+                      ..._machineryForSet.map(
+                        (m) => DropdownMenuItem<Machinery?>(
+                          value: m,
+                          child: Text(m.displayLabel),
+                        ),
+                      ),
+                    ],
+                    onChanged: (m) => setState(() => _selectedMachinery = m),
                   ),
                   const SizedBox(height: 20),
                 ],

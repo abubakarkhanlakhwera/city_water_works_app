@@ -18,6 +18,34 @@ class MachineryForm extends StatefulWidget {
 class _MachineryFormState extends State<MachineryForm> {
   static const String _defaultMotorBrand = 'Siemns';
   static const List<String> _defaultPumpSizes = ['4x5', '3x5'];
+  static const List<String> _miscItemTypes = ['Leakage', 'Pipes', 'Starter', 'Valves'];
+  static const List<String> _miscInchSizes = [
+    '3 Inches',
+    '4 Inches',
+    '5 Inches',
+    '6 Inches',
+    '8 Inches',
+    '9 Inches',
+    '12 Inches',
+    '15 Inches',
+    '18 Inches',
+    '24 Inches',
+  ];
+  static const List<String> _miscStarterTypes = ['Electrical Head', 'Starter'];
+  static const List<String> _miscSubItems = [
+    'Main Leakage',
+    'Joint Leakage',
+    'Service Leakage',
+    'GI Pipe',
+    'PVC Pipe',
+    'HDPE Pipe',
+    'Electrical Head',
+    'Starter',
+    'Starter Relay',
+    'Gate Valve',
+    'Air Valve',
+    'Check Valve',
+  ];
 
   final _formKey = GlobalKey<FormState>();
   final _dao = MachineryDao();
@@ -76,7 +104,10 @@ class _MachineryFormState extends State<MachineryForm> {
       MachineryType(
         typeName: 'Miscellaneous',
         attributes: [
-          MachineryAttribute(name: 'Particular', inputType: 'text', required: false),
+          MachineryAttribute(name: 'Item Type', inputType: 'dropdown', options: _miscItemTypes, required: true),
+          MachineryAttribute(name: 'Sub Item', inputType: 'dropdown', options: _miscSubItems, required: false),
+          MachineryAttribute(name: 'Size (Inches)', inputType: 'dropdown', options: _miscInchSizes, required: false),
+          MachineryAttribute(name: 'Starter Type', inputType: 'dropdown', options: _miscStarterTypes, required: false),
         ],
       ),
     ];
@@ -87,6 +118,26 @@ class _MachineryFormState extends State<MachineryForm> {
         await _typesDao.insertType(type);
       }
       types = await _typesDao.getAllTypes();
+    }
+
+    final miscIndex = types.indexWhere((t) => t.typeName.toLowerCase() == 'miscellaneous');
+    if (miscIndex != -1) {
+      final miscType = types[miscIndex];
+      if (_isLegacyMiscellaneousType(miscType)) {
+        final updated = MachineryType(
+          typeId: miscType.typeId,
+          typeName: miscType.typeName,
+          attributes: [
+            MachineryAttribute(name: 'Item Type', inputType: 'dropdown', options: _miscItemTypes, required: true),
+            MachineryAttribute(name: 'Sub Item', inputType: 'dropdown', options: _miscSubItems, required: false),
+            MachineryAttribute(name: 'Size (Inches)', inputType: 'dropdown', options: _miscInchSizes, required: false),
+            MachineryAttribute(name: 'Starter Type', inputType: 'dropdown', options: _miscStarterTypes, required: false),
+          ],
+          createdAt: miscType.createdAt,
+        );
+        await _typesDao.updateType(updated);
+        types = await _typesDao.getAllTypes();
+      }
     }
 
     if (mounted) {
@@ -113,6 +164,14 @@ class _MachineryFormState extends State<MachineryForm> {
         setState(() {});
       }
     }
+  }
+
+  bool _isLegacyMiscellaneousType(MachineryType type) {
+    final names = type.attributes.map((a) => a.name.toLowerCase()).toSet();
+    return !names.contains('item type') ||
+      !names.contains('sub item') ||
+        !names.contains('size (inches)') ||
+        !names.contains('starter type');
   }
 
   @override
@@ -169,13 +228,43 @@ class _MachineryFormState extends State<MachineryForm> {
         attr.name.toLowerCase() == 'size';
   }
 
+  bool _isMiscItemTypeAttribute(MachineryAttribute attr) {
+    return _selectedType?.typeName.toLowerCase() == 'miscellaneous' &&
+        attr.name.toLowerCase() == 'item type';
+  }
+
+  bool _isMiscSubItemAttribute(MachineryAttribute attr) {
+    return _selectedType?.typeName.toLowerCase() == 'miscellaneous' &&
+        attr.name.toLowerCase() == 'sub item';
+  }
+
+  List<String> _miscSubItemsForSelectedItemType() {
+    final selectedItemType = (_specControllers['Item Type']?.text ?? '').toLowerCase();
+    switch (selectedItemType) {
+      case 'leakage':
+        return const ['Main Leakage', 'Joint Leakage', 'Service Leakage'];
+      case 'pipes':
+        return const ['GI Pipe', 'PVC Pipe', 'HDPE Pipe'];
+      case 'starter':
+        return const ['Electrical Head', 'Starter', 'Starter Relay'];
+      case 'valves':
+        return const ['Gate Valve', 'Air Valve', 'Check Valve'];
+      default:
+        return _miscSubItems;
+    }
+  }
+
   bool _shouldUseDropdown(MachineryAttribute attr) {
     if (attr.inputType == 'dropdown') return true;
+    if (_isMiscSubItemAttribute(attr)) return true;
     return _isPumpSizeAttribute(attr);
   }
 
   List<String> _getAttributeOptions(MachineryAttribute attr) {
     final options = List<String>.from(attr.options);
+    if (_isMiscSubItemAttribute(attr)) {
+      return _miscSubItemsForSelectedItemType();
+    }
     if (_isPumpSizeAttribute(attr)) {
       for (final size in _defaultPumpSizes) {
         if (!options.contains(size)) {
@@ -211,6 +300,7 @@ class _MachineryFormState extends State<MachineryForm> {
     );
 
     if (value == null || value.isEmpty || _selectedType == null) return;
+    if (!mounted) return;
 
     final normalized = value.toLowerCase();
     final existing = _getAttributeOptions(attr).map((e) => e.toLowerCase()).toSet();
@@ -371,7 +461,7 @@ class _MachineryFormState extends State<MachineryForm> {
               else ...[
                 // Type selector
                 DropdownButtonFormField<MachineryType>(
-                  value: _selectedType,
+                  initialValue: _selectedType,
                   decoration: const InputDecoration(
                     labelText: 'Machinery Type *',
                     border: OutlineInputBorder(),
@@ -406,7 +496,7 @@ class _MachineryFormState extends State<MachineryForm> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: useDropdown && options.isNotEmpty
                           ? DropdownButtonFormField<String>(
-                              value: ctrl.text.isEmpty ? null : ctrl.text,
+                              initialValue: ctrl.text.isEmpty ? null : ctrl.text,
                               decoration: InputDecoration(
                                 labelText: '${attr.name}${attr.required ? ' *' : ''}',
                                 border: const OutlineInputBorder(),
@@ -419,7 +509,20 @@ class _MachineryFormState extends State<MachineryForm> {
                               items: options
                                   .map((o) => DropdownMenuItem(value: o, child: Text(o)))
                                   .toList(),
-                              onChanged: (v) => ctrl.text = v ?? '',
+                              onChanged: (v) {
+                                setState(() {
+                                  ctrl.text = v ?? '';
+                                  if (_isMiscItemTypeAttribute(attr)) {
+                                    final subItemCtrl = _specControllers['Sub Item'];
+                                    if (subItemCtrl != null) {
+                                      final validSubItems = _miscSubItemsForSelectedItemType();
+                                      if (!validSubItems.contains(subItemCtrl.text)) {
+                                        subItemCtrl.clear();
+                                      }
+                                    }
+                                  }
+                                });
+                              },
                               validator: attr.required ? (v) => v == null ? 'Required' : null : null,
                             )
                           : AppTextField(
