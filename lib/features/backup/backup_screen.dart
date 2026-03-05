@@ -160,19 +160,29 @@ class _BackupScreenState extends State<BackupScreen> {
 
     if (path == null) {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['cww', 'zip'],
+        // Use FileType.any so Google Drive and all file managers can show .cww files
+        type: FileType.any,
         allowMultiple: false,
         withData: true,
       );
       if (result == null) return;
       final file = result.files.single;
-      path = file.path;
       pickedBytes = file.bytes;
-      if (path == null && (pickedBytes == null || pickedBytes.isEmpty)) {
+
+      // If bytes not loaded (withData failed), try reading from path
+      if ((pickedBytes == null || pickedBytes.isEmpty) && file.path != null) {
+        final localFile = File(file.path!);
+        if (await localFile.exists()) {
+          pickedBytes = await localFile.readAsBytes();
+        }
+      }
+
+      if (pickedBytes == null || pickedBytes.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to read selected backup file.')),
+          const SnackBar(
+            content: Text('Could not read the file. Try saving it locally first, then pick it again.'),
+          ),
         );
         return;
       }
