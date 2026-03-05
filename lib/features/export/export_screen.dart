@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/database/daos/schemes_dao.dart';
 import '../../core/database/daos/sets_dao.dart';
 import '../../core/database/daos/machinery_dao.dart';
+import '../../core/database/daos/miscellaneous_dao.dart';
 import '../../core/models/machinery.dart';
 import '../../core/models/scheme.dart';
 import '../../core/models/set_model.dart';
@@ -27,6 +28,7 @@ class _ExportScreenState extends State<ExportScreen> {
   final _schemesDao = SchemesDao();
   final _setsDao = SetsDao();
   final _machineryDao = MachineryDao();
+  final _miscDao = MiscellaneousDao();
   final _exportService = ExportService();
 
   List<Scheme> _schemes = [];
@@ -35,6 +37,9 @@ class _ExportScreenState extends State<ExportScreen> {
   Scheme? _selectedScheme;
   SetModel? _selectedSet;
   Machinery? _selectedMachinery;
+  List<Map<String, String>> _miscRecords = [];
+  String _miscExportMode = 'complete';
+  String? _selectedMiscRecordId;
   String _exportFormat = 'pdf';
   String _exportScope = 'scheme';
 
@@ -71,9 +76,30 @@ class _ExportScreenState extends State<ExportScreen> {
           setState(() {});
         }
       }
+
+      await _loadMiscRecords();
     } catch (e) {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _loadMiscRecords() async {
+    final recordsRaw = await _miscDao.getAllRecords();
+    final records = recordsRaw
+        .map((map) => {
+              'id': (map['id'] ?? '').toString(),
+              'title': (map['title'] ?? 'Untitled').toString(),
+            })
+        .where((entry) => (entry['id'] ?? '').isNotEmpty)
+        .toList();
+
+    if (!mounted) return;
+    setState(() {
+      _miscRecords = records;
+      if (_selectedMiscRecordId != null && !_miscRecords.any((r) => r['id'] == _selectedMiscRecordId)) {
+        _selectedMiscRecordId = null;
+      }
+    });
   }
 
   Future<void> _loadSets(int schemeId) async {
@@ -96,7 +122,7 @@ class _ExportScreenState extends State<ExportScreen> {
   }
 
   Future<void> _export() async {
-    if (_selectedScheme == null) {
+    if (_exportScope != 'miscellaneous' && _selectedScheme == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select a scheme')),
       );
@@ -108,13 +134,12 @@ class _ExportScreenState extends State<ExportScreen> {
       );
       return;
     }
-    if (_selectedMachinery != null && _exportFormat != 'pdf') {
+    if (_exportScope == 'miscellaneous' && _miscExportMode == 'single' && _selectedMiscRecordId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Single machinery export is available for PDF only')),
+        const SnackBar(content: Text('Please select a miscellaneous item')),
       );
       return;
     }
-
     setState(() => _isExporting = true);
 
     try {
@@ -124,7 +149,12 @@ class _ExportScreenState extends State<ExportScreen> {
       if (_exportFormat == 'pdf') {
         Uint8List pdfBytes;
         String filename;
-        if (_exportScope == 'set' && _selectedSet != null && _selectedMachinery != null) {
+        if (_exportScope == 'miscellaneous') {
+          pdfBytes = await _exportService.exportMiscellaneousToPdf(
+            recordId: _miscExportMode == 'single' ? _selectedMiscRecordId : null,
+          );
+          filename = _buildSuggestedFileName(extension: 'pdf');
+        } else if (_exportScope == 'set' && _selectedSet != null && _selectedMachinery != null) {
           pdfBytes = await _exportService.exportSingleMachineryToPdf(
             _selectedSet!.setId!,
             _selectedMachinery!.machineryId!,
@@ -141,10 +171,40 @@ class _ExportScreenState extends State<ExportScreen> {
         filePath = await _savePdfWithPathChoice(pdfBytes, filename);
       } else if (_exportFormat == 'excel') {
         suggestedFileName = _buildSuggestedFileName(extension: 'xlsx');
-        filePath = await _exportService.exportSchemeToExcel(_selectedScheme!.schemeId!);
+        if (_exportScope == 'miscellaneous') {
+          filePath = await _exportService.exportMiscellaneousToExcel(
+            recordId: _miscExportMode == 'single' ? _selectedMiscRecordId : null,
+          );
+        } else if (_exportScope == 'set' && _selectedSet != null) {
+          if (_selectedMachinery != null) {
+            filePath = await _exportService.exportSingleMachineryToExcel(
+              _selectedSet!.setId!,
+              _selectedMachinery!.machineryId!,
+            );
+          } else {
+            filePath = await _exportService.exportSetToExcel(_selectedSet!.setId!);
+          }
+        } else {
+          filePath = await _exportService.exportSchemeToExcel(_selectedScheme!.schemeId!);
+        }
       } else if (_exportFormat == 'csv') {
         suggestedFileName = _buildSuggestedFileName(extension: 'csv');
-        filePath = await _exportService.exportSchemeToCsv(_selectedScheme!.schemeId!);
+        if (_exportScope == 'miscellaneous') {
+          filePath = await _exportService.exportMiscellaneousToCsv(
+            recordId: _miscExportMode == 'single' ? _selectedMiscRecordId : null,
+          );
+        } else if (_exportScope == 'set' && _selectedSet != null) {
+          if (_selectedMachinery != null) {
+            filePath = await _exportService.exportSingleMachineryToCsv(
+              _selectedSet!.setId!,
+              _selectedMachinery!.machineryId!,
+            );
+          } else {
+            filePath = await _exportService.exportSetToCsv(_selectedSet!.setId!);
+          }
+        } else {
+          filePath = await _exportService.exportSchemeToCsv(_selectedScheme!.schemeId!);
+        }
       }
 
       if (filePath != null && mounted) {
@@ -186,6 +246,15 @@ class _ExportScreenState extends State<ExportScreen> {
   }
 
   String _buildSuggestedFileName({required String extension}) {
+    if (_exportScope == 'miscellaneous') {
+      if (_miscExportMode == 'single' && _selectedMiscRecordId != null) {
+        final item = _miscRecords.where((r) => r['id'] == _selectedMiscRecordId).firstOrNull;
+        final title = (item?['title'] ?? 'Miscellaneous').replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+        return '${title}_Miscellaneous_Export.$extension';
+      }
+      return 'Miscellaneous_Export.$extension';
+    }
+
     final machineryTypeForName = (_selectedMachinery?.machineryType.trim().isNotEmpty ?? false)
         ? _selectedMachinery!.machineryType.trim()
         : 'Machinery';
@@ -342,6 +411,10 @@ class _ExportScreenState extends State<ExportScreen> {
                     ButtonSegment(value: 'set', label: Text('Single Set'), icon: Icon(Icons.folder)),
                     ButtonSegment(
                         value: 'scheme', label: Text('Entire Scheme'), icon: Icon(Icons.business)),
+                    ButtonSegment(
+                        value: 'miscellaneous',
+                        label: Text('Miscellaneous'),
+                        icon: Icon(Icons.category_outlined)),
                   ],
                   selected: {_exportScope},
                   onSelectionChanged: (v) => setState(() {
@@ -349,32 +422,84 @@ class _ExportScreenState extends State<ExportScreen> {
                     _selectedSet = null;
                     _selectedMachinery = null;
                     _machineryForSet = [];
+                    if (_exportScope == 'miscellaneous') {
+                      _miscExportMode = 'complete';
+                      _selectedMiscRecordId = null;
+                    }
                   }),
                 ),
                 const SizedBox(height: 20),
 
                 // Scheme selector
-                DropdownButtonFormField<Scheme>(
-                  initialValue: _selectedScheme,
-                  decoration: const InputDecoration(
-                    labelText: 'Select Scheme',
-                    border: OutlineInputBorder(),
+                if (_exportScope != 'miscellaneous') ...[
+                  DropdownButtonFormField<Scheme>(
+                    initialValue: _selectedScheme,
+                    decoration: const InputDecoration(
+                      labelText: 'Select Scheme',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: _schemes
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s.schemeName)))
+                        .toList(),
+                    onChanged: (s) async {
+                      setState(() {
+                        _selectedScheme = s;
+                        _selectedSet = null;
+                        _selectedMachinery = null;
+                        _machineryForSet = [];
+                        _sets = [];
+                      });
+                      if (s != null) await _loadSets(s.schemeId!);
+                    },
                   ),
-                  items: _schemes
-                      .map((s) => DropdownMenuItem(value: s, child: Text(s.schemeName)))
-                      .toList(),
-                  onChanged: (s) async {
-                    setState(() {
-                      _selectedScheme = s;
-                      _selectedSet = null;
-                      _selectedMachinery = null;
-                      _machineryForSet = [];
-                      _sets = [];
-                    });
-                    if (s != null) await _loadSets(s.schemeId!);
-                  },
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                ] else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 8),
+                        child: Text('Miscellaneous Mode', style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(value: 'single', label: Text('Single Item'), icon: Icon(Icons.filter_1)),
+                          ButtonSegment(value: 'complete', label: Text('Complete'), icon: Icon(Icons.list_alt)),
+                        ],
+                        selected: {_miscExportMode},
+                        onSelectionChanged: (v) => setState(() {
+                          _miscExportMode = v.first;
+                          if (_miscExportMode == 'complete') {
+                            _selectedMiscRecordId = null;
+                          }
+                        }),
+                      ),
+                      const SizedBox(height: 12),
+                      if (_miscExportMode == 'single')
+                        DropdownButtonFormField<String>(
+                          initialValue: _selectedMiscRecordId,
+                          decoration: const InputDecoration(
+                            labelText: 'Select Miscellaneous Item',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: _miscRecords
+                              .map((r) => DropdownMenuItem(
+                                    value: r['id'],
+                                    child: Text(r['title'] ?? 'Untitled'),
+                                  ))
+                              .toList(),
+                          onChanged: (v) => setState(() => _selectedMiscRecordId = v),
+                        )
+                      else
+                        const ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.info_outline),
+                          title: Text('Complete Miscellaneous Export'),
+                          subtitle: Text('Exports all miscellaneous items and expenditures.'),
+                        ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
 
                 // Set selector (only if scope is 'set')
                 if (_exportScope == 'set') ...[
@@ -448,7 +573,9 @@ class _ExportScreenState extends State<ExportScreen> {
                 SizedBox(
                   height: 48,
                   child: OutlinedButton.icon(
-                    onPressed: _isExporting ? null : _exportAllMachineryPdf,
+                    onPressed: (_isExporting || _exportScope == 'miscellaneous')
+                        ? null
+                        : _exportAllMachineryPdf,
                     icon: const Icon(Icons.picture_as_pdf),
                     label: const Text('Export All Machinery (Single PDF)'),
                   ),

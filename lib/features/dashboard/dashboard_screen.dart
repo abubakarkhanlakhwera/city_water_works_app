@@ -301,6 +301,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
         ),
         actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
           TextButton.icon(
             onPressed: () async {
               final savedPath = await _saveAsAndMoveExport(path);
@@ -431,7 +435,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   title: 'Amount / Month',
                   value: CurrencyUtils.formatAmountShort(_amountThisMonth),
                   color: const Color(0xFFFBBF24),
-                  icon: Icons.currency_rupee,
+                  icon: Icons.payments_outlined,
                 ),
               ],
             ),

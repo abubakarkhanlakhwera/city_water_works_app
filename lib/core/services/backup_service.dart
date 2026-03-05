@@ -99,6 +99,24 @@ class BackupService {
     return target.path;
   }
 
+  Future<String> saveBackupToPath(String backupPath, String destinationPath) async {
+    final source = File(backupPath);
+    if (!await source.exists()) {
+      throw Exception('Backup file not found');
+    }
+
+    final target = File(destinationPath);
+    if (!await target.parent.exists()) {
+      await target.parent.create(recursive: true);
+    }
+    if (await target.exists()) {
+      await target.delete();
+    }
+
+    await source.copy(target.path);
+    return target.path;
+  }
+
   /// Restore from a backup file
   Future<void> restoreBackup(String backupPath) async {
     final backupFile = File(backupPath);

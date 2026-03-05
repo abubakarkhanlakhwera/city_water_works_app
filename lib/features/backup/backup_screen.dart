@@ -22,6 +22,7 @@ class _BackupScreenState extends State<BackupScreen> {
   static const _backupActionDone = 'done';
   static const _backupActionShare = 'share';
   static const _backupActionSaveDownloads = 'save_downloads';
+  static const _backupActionSelectPath = 'select_path';
 
   @override
   void initState() {
@@ -64,6 +65,11 @@ class _BackupScreenState extends State<BackupScreen> {
                 icon: const Icon(Icons.download),
                 label: const Text('Save to Downloads'),
               ),
+              TextButton.icon(
+                onPressed: () => Navigator.pop(ctx, _backupActionSelectPath),
+                icon: const Icon(Icons.folder_open),
+                label: const Text('Select Path'),
+              ),
               ElevatedButton.icon(
                 onPressed: () => Navigator.pop(ctx, _backupActionShare),
                 icon: const Icon(Icons.share),
@@ -83,6 +89,24 @@ class _BackupScreenState extends State<BackupScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Backup saved to Downloads:\n$downloadsPath')),
           );
+        }
+
+        if (action == _backupActionSelectPath) {
+          final suggestedName = filePath.split(Platform.pathSeparator).last;
+          final destinationPath = await FilePicker.platform.saveFile(
+            dialogTitle: 'Choose where to save backup',
+            fileName: suggestedName,
+            type: FileType.custom,
+            allowedExtensions: const ['cww'],
+          );
+
+          if (destinationPath != null && destinationPath.trim().isNotEmpty) {
+            final savedPath = await _backupService.saveBackupToPath(filePath, destinationPath);
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Backup saved to:\n$savedPath')),
+            );
+          }
         }
       }
     } catch (e) {
@@ -145,10 +169,12 @@ class _BackupScreenState extends State<BackupScreen> {
 
     setState(() => _isProcessing = true);
     try {
-      if (path != null) {
+      if (pickedBytes != null && pickedBytes.isNotEmpty) {
+        await _backupService.restoreBackupBytes(pickedBytes);
+      } else if (path != null) {
         await _backupService.restoreBackup(path);
       } else {
-        await _backupService.restoreBackupBytes(pickedBytes!);
+        throw Exception('Unable to access selected backup file.');
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

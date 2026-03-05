@@ -11,7 +11,7 @@ class AmountField extends StatelessWidget {
     super.key,
     required this.controller,
     this.label = 'Amount',
-    this.currencySymbol = 'Rs.',
+    this.currencySymbol = 'PKR',
     this.validator,
     this.hint,
   });
@@ -24,7 +24,7 @@ class AmountField extends StatelessWidget {
         labelText: label,
         hintText: hint,
         prefixText: '$currencySymbol ',
-        prefixIcon: const Icon(Icons.currency_rupee),
+        prefixIcon: const Icon(Icons.payments_outlined),
       ),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       validator: validator ?? (value) {

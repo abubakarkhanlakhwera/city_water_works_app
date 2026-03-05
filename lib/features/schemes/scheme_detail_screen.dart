@@ -58,13 +58,15 @@ class _SchemeDetailScreenState extends State<SchemeDetailScreen> {
     final nextNum = await _setsDao.getNextSetNumber(widget.schemeId);
     if (!mounted) return;
 
-    final result = await showModalBottomSheet<bool>(
+    final result = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: SetForm(schemeId: widget.schemeId, nextSetNumber: nextNum),
+        ),
       ),
-      builder: (ctx) => SetForm(schemeId: widget.schemeId, nextSetNumber: nextNum),
     );
     if (result == true) _loadData();
   }

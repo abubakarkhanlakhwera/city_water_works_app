@@ -75,13 +75,15 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
   }
 
   Future<void> _addMachinery() async {
-    final result = await showModalBottomSheet<bool>(
+    final result = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: MachineryForm(setId: widget.setId),
+        ),
       ),
-      builder: (ctx) => MachineryForm(setId: widget.setId),
     );
     if (result == true) _loadData();
   }
@@ -109,25 +111,29 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
   }
 
   Future<void> _addEntry(int machineryId) async {
-    final result = await showModalBottomSheet<bool>(
+    final result = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: BillingEntryForm(machineryId: machineryId),
+        ),
       ),
-      builder: (ctx) => BillingEntryForm(machineryId: machineryId),
     );
     if (result == true) _loadData();
   }
 
   Future<void> _editEntry(BillingEntry entry) async {
-    final result = await showModalBottomSheet<bool>(
+    final result = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: BillingEntryForm(machineryId: entry.machineryId, entry: entry),
+        ),
       ),
-      builder: (ctx) => BillingEntryForm(machineryId: entry.machineryId, entry: entry),
     );
     if (result == true) _loadData();
   }
@@ -340,7 +346,7 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
                   DataColumn(label: Text('Date', style: TextStyle(fontWeight: FontWeight.bold))),
                   DataColumn(label: Text('Voucher No.', style: TextStyle(fontWeight: FontWeight.bold))),
                   DataColumn(
-                    label: Text('Amount (Rs.)', style: TextStyle(fontWeight: FontWeight.bold)),
+                    label: Text('Amount (PKR)', style: TextStyle(fontWeight: FontWeight.bold)),
                     numeric: true,
                   ),
                   DataColumn(label: Text('Reg. Page No.', style: TextStyle(fontWeight: FontWeight.bold))),

@@ -12,6 +12,7 @@ import 'features/schemes/schemes_list_screen.dart';
 import 'features/import/import_screen.dart';
 import 'features/export/export_screen.dart';
 import 'features/settings/settings_screen.dart';
+import 'features/miscellaneous/miscellaneous_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -144,10 +145,28 @@ class _AppShellState extends State<AppShell> {
   static const _accent = Color(0xFF60A5FA);
   static const _textPrimary = Color(0xFFF1F5F9);
   static const _textSecondary = Color(0x99E2E8F0);
+  final _settingsDao = SettingsDao();
+  String _appDisplayName = 'Water Supply Scheme History';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppName();
+  }
+
+  Future<void> _loadAppName() async {
+    final savedName = await _settingsDao.getSetting('app_display_name');
+    if (!mounted) return;
+    setState(() {
+      _appDisplayName =
+          (savedName == null || savedName.trim().isEmpty) ? 'Water Supply Scheme History' : savedName.trim();
+    });
+  }
 
   final List<_NavItem> _navItems = [
     _NavItem(icon: Icons.dashboard, label: 'Dashboard'),
     _NavItem(icon: Icons.business, label: 'Schemes'),
+    _NavItem(icon: Icons.category_outlined, label: 'Miscellaneous'),
     _NavItem(icon: Icons.upload_file, label: 'Import'),
     _NavItem(icon: Icons.download, label: 'Export'),
     _NavItem(icon: Icons.settings, label: 'Settings'),
@@ -158,20 +177,23 @@ class _AppShellState extends State<AppShell> {
       case 0:
         return DashboardScreen(
           onNavigateToSchemes: () => setState(() => _selectedIndex = 1),
-          onNavigateToImport: () => setState(() => _selectedIndex = 2),
-          onNavigateToExport: () => setState(() => _selectedIndex = 3),
+          onNavigateToImport: () => setState(() => _selectedIndex = 3),
+          onNavigateToExport: () => setState(() => _selectedIndex = 4),
         );
       case 1:
         return const SchemesListScreen();
       case 2:
-        return const ImportScreen();
+        return const MiscellaneousScreen();
       case 3:
-        return const ExportScreen();
+        return const ImportScreen();
       case 4:
+        return const ExportScreen();
+      case 5:
         return SettingsScreen(
           onThemeChanged: () => CityWaterWorksApp.of(context)?.toggleTheme(),
           currentUsername: widget.currentUsername,
           onLogout: widget.onLogout,
+          onAppNameChanged: (value) => setState(() => _appDisplayName = value),
         );
       default:
         return const DashboardScreen();
@@ -187,26 +209,26 @@ class _AppShellState extends State<AppShell> {
         color: Colors.white.withOpacity(0.04),
         border: Border.all(color: _border),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          CircleAvatar(
+          const CircleAvatar(
             radius: 16,
             backgroundColor: Color(0x223B82F6),
             child: Icon(Icons.water_drop, size: 18, color: _accent),
           ),
-          SizedBox(width: 10),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Water Supply Scheme History',
+                Text(_appDisplayName,
                     style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: _textPrimary,
                         letterSpacing: -0.2)),
-                SizedBox(height: 2),
-                Text('Admin Panel',
+                const SizedBox(height: 2),
+                const Text('Admin Panel',
                     style: TextStyle(
                         fontSize: 10,
                         color: _textSecondary,

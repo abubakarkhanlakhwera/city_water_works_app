@@ -10,6 +10,7 @@ import '../database/daos/schemes_dao.dart';
 import '../database/daos/sets_dao.dart';
 import '../database/daos/machinery_dao.dart';
 import '../database/daos/billing_entries_dao.dart';
+import '../database/daos/miscellaneous_dao.dart';
 import '../models/machinery.dart';
 
 class ExportService {
@@ -17,10 +18,11 @@ class ExportService {
   final SetsDao _setsDao = SetsDao();
   final MachineryDao _machineryDao = MachineryDao();
   final BillingEntriesDao _entriesDao = BillingEntriesDao();
+  final MiscellaneousDao _miscDao = MiscellaneousDao();
 
   String _formatAmount(double amount) {
     final f = NumberFormat('#,##0', 'en_US');
-    return 'Rs. ${f.format(amount)}';
+    return 'PKR ${f.format(amount)}';
   }
 
   String _nowFormatted() {
@@ -195,7 +197,7 @@ class ExportService {
             cellStyle: const pw.TextStyle(fontSize: 9),
             cellAlignment: pw.Alignment.centerLeft,
             headerAlignment: pw.Alignment.centerLeft,
-            headers: const ['Type', 'Functional / Total', 'Total Amount (Rs.)', 'Specification Breakdown'],
+            headers: const ['Type', 'Functional / Total', 'Total Amount (PKR)', 'Specification Breakdown'],
             data: orderedTypes.map((type) {
               final functional = functionalByType[type] ?? 0;
               final total = totalByType[type] ?? 0;
@@ -677,10 +679,6 @@ class ExportService {
               ),
               pw.SizedBox(height: 4),
               pw.Text(
-                'Scheme Coverage (at least one): Turbine ${schemeTypeCounts['turbine'] ?? 0} | Pump ${schemeTypeCounts['pump'] ?? 0}',
-                style: const pw.TextStyle(fontSize: 10),
-              ),
-              pw.Text(
                 'Total Machinery: Motor $motorCount | Pump $pumpCount | Transformer $transformerCount | Turbine $turbineCount',
                 style: const pw.TextStyle(fontSize: 10),
               ),
@@ -798,11 +796,6 @@ class ExportService {
                   style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
                 ),
                 pw.SizedBox(height: 4),
-                if (schemeIndex == 0 && context.pageNumber == 1)
-                  pw.Text(
-                    'Scheme Coverage (at least one): Turbine ${schemeTypeCounts['turbine'] ?? 0} | Pump ${schemeTypeCounts['pump'] ?? 0}',
-                    style: const pw.TextStyle(fontSize: 10),
-                  ),
                 if (schemeIndex == 0 && context.pageNumber == 1)
                   pw.Text(
                     'Total Machinery: Motor $motorCount | Pump $pumpCount | Transformer $transformerCount | Turbine $turbineCount',
@@ -1011,11 +1004,6 @@ class ExportService {
               pw.SizedBox(height: 4),
               if (schemeIndex == 0 && setIndex == 0 && context.pageNumber == 1)
                 pw.Text(
-                  'Scheme Coverage (at least one): Turbine ${schemeTypeCounts['turbine'] ?? 0} | Pump ${schemeTypeCounts['pump'] ?? 0}',
-                  style: const pw.TextStyle(fontSize: 10),
-                ),
-              if (schemeIndex == 0 && setIndex == 0 && context.pageNumber == 1)
-                pw.Text(
                   'Total Machinery: Motor $motorCount | Pump $pumpCount | Transformer $transformerCount | Turbine $turbineCount',
                   style: const pw.TextStyle(fontSize: 10),
                 ),
@@ -1132,6 +1120,128 @@ class ExportService {
     return file.path;
   }
 
+  Future<String> exportSetToExcel(int setId) async {
+    final setModel = await _setsDao.getSetById(setId);
+    if (setModel == null) throw Exception('Set not found');
+
+    final scheme = await _schemesDao.getSchemeById(setModel.schemeId);
+    final excel = xl.Excel.createExcel();
+    final baseName = '${scheme?.schemeName ?? 'Scheme'} ${setModel.setLabel}';
+    final sheetName = baseName.length > 31 ? baseName.substring(0, 31) : baseName;
+    final sheet = excel[sheetName];
+
+    final machineryList = await _machineryDao.getMachineryForSet(setId);
+    int machColOffset = 0;
+    for (final machinery in machineryList) {
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset, rowIndex: 0)).value =
+          xl.TextCellValue(baseName);
+
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset, rowIndex: 1)).value =
+          xl.TextCellValue(machinery.displayLabel);
+
+      final headers = ['Sr.No', 'Date', 'Voucher No.', 'Amount', 'Reg. Page No.'];
+      for (int h = 0; h < headers.length; h++) {
+        final cell =
+            sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + h, rowIndex: 2));
+        cell.value = xl.TextCellValue(headers[h]);
+        cell.cellStyle = xl.CellStyle(
+          bold: true,
+          backgroundColorHex: xl.ExcelColor.fromHexString('#1E3A5F'),
+          fontColorHex: xl.ExcelColor.fromHexString('#FFFFFF'),
+        );
+      }
+
+      final entries = await _entriesDao.getEntriesForMachinery(machinery.machineryId!);
+      for (int i = 0; i < entries.length; i++) {
+        final e = entries[i];
+        sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset, rowIndex: 3 + i))
+            .value = xl.IntCellValue(e.serialNo);
+        sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 1, rowIndex: 3 + i))
+            .value = xl.TextCellValue(e.entryDate);
+        sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 2, rowIndex: 3 + i))
+            .value = e.voucherNo != null ? xl.IntCellValue(e.voucherNo!) : xl.TextCellValue('');
+        sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 3, rowIndex: 3 + i))
+            .value = xl.DoubleCellValue(e.amount);
+        sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 4, rowIndex: 3 + i))
+            .value = xl.TextCellValue(e.regPageNo ?? '');
+      }
+
+      machColOffset += 6;
+    }
+
+    if (excel.tables.containsKey('Sheet1')) {
+      excel.delete('Sheet1');
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final filename = '${baseName.replaceAll(RegExp(r'[^\\w\\s]'), '_')}_Export.xlsx';
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(excel.encode()!);
+    return file.path;
+  }
+
+  Future<String> exportSingleMachineryToExcel(int setId, int machineryId) async {
+    final setModel = await _setsDao.getSetById(setId);
+    if (setModel == null) throw Exception('Set not found');
+
+    final scheme = await _schemesDao.getSchemeById(setModel.schemeId);
+    final machineryList = await _machineryDao.getMachineryForSet(setId);
+    final machinery = machineryList.where((m) => m.machineryId == machineryId).firstOrNull;
+    if (machinery == null) throw Exception('Selected machinery not found');
+
+    final excel = xl.Excel.createExcel();
+    final baseName = '${scheme?.schemeName ?? 'Scheme'} ${setModel.setLabel}';
+    final sheetName = baseName.length > 31 ? baseName.substring(0, 31) : baseName;
+    final sheet = excel[sheetName];
+
+    sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value =
+        xl.TextCellValue(baseName);
+
+    sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1)).value =
+        xl.TextCellValue(machinery.displayLabel);
+
+    final headers = ['Sr.No', 'Date', 'Voucher No.', 'Amount', 'Reg. Page No.'];
+    for (int h = 0; h < headers.length; h++) {
+      final cell = sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: h, rowIndex: 2));
+      cell.value = xl.TextCellValue(headers[h]);
+      cell.cellStyle = xl.CellStyle(
+        bold: true,
+        backgroundColorHex: xl.ExcelColor.fromHexString('#1E3A5F'),
+        fontColorHex: xl.ExcelColor.fromHexString('#FFFFFF'),
+      );
+    }
+
+    final entries = await _entriesDao.getEntriesForMachinery(machinery.machineryId!);
+    for (int i = 0; i < entries.length; i++) {
+      final e = entries[i];
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 3 + i)).value =
+          xl.IntCellValue(e.serialNo);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 3 + i)).value =
+          xl.TextCellValue(e.entryDate);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 3 + i)).value =
+          e.voucherNo != null ? xl.IntCellValue(e.voucherNo!) : xl.TextCellValue('');
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: 3 + i)).value =
+          xl.DoubleCellValue(e.amount);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: 3 + i)).value =
+          xl.TextCellValue(e.regPageNo ?? '');
+    }
+
+    if (excel.tables.containsKey('Sheet1')) {
+      excel.delete('Sheet1');
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final filename = '${baseName.replaceAll(RegExp(r'[^\\w\\s]'), '_')}_${machinery.machineryType}_Export.xlsx';
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(excel.encode()!);
+    return file.path;
+  }
+
   // ─────────────────── CSV Export ───────────────────
 
   Future<String> exportSchemeToCsv(int schemeId) async {
@@ -1165,6 +1275,239 @@ class ExportService {
     await file.writeAsString(buffer.toString());
     return file.path;
   }
+
+  Future<String> exportSetToCsv(int setId) async {
+    final setModel = await _setsDao.getSetById(setId);
+    if (setModel == null) throw Exception('Set not found');
+    final scheme = await _schemesDao.getSchemeById(setModel.schemeId);
+    final machineryList = await _machineryDao.getMachineryForSet(setId);
+
+    final buffer = StringBuffer();
+    buffer.write('\uFEFF');
+    buffer.writeln('Scheme,Set,Machinery Type,Specs,Sr.No,Date,Voucher No.,Amount,Reg. Page No.,Notes');
+
+    for (final machinery in machineryList) {
+      final entries = await _entriesDao.getEntriesForMachinery(machinery.machineryId!);
+      for (final e in entries) {
+        buffer.writeln(
+          '"${scheme?.schemeName ?? ''}","${setModel.setLabel}","${machinery.machineryType}","${machinery.displayLabel}",${e.serialNo},"${e.entryDate}",${e.voucherNo ?? ''},${e.amount},"${e.regPageNo ?? ''}","${e.notes ?? ''}"',
+        );
+      }
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final filename =
+        '${'${scheme?.schemeName ?? 'Scheme'} ${setModel.setLabel}'.replaceAll(RegExp(r'[^\\w\\s]'), '_')}_Export.csv';
+    final file = File('${dir.path}/$filename');
+    await file.writeAsString(buffer.toString());
+    return file.path;
+  }
+
+  Future<String> exportSingleMachineryToCsv(int setId, int machineryId) async {
+    final setModel = await _setsDao.getSetById(setId);
+    if (setModel == null) throw Exception('Set not found');
+    final scheme = await _schemesDao.getSchemeById(setModel.schemeId);
+
+    final machineryList = await _machineryDao.getMachineryForSet(setId);
+    final machinery = machineryList.where((m) => m.machineryId == machineryId).firstOrNull;
+    if (machinery == null) throw Exception('Selected machinery not found');
+
+    final buffer = StringBuffer();
+    buffer.write('\uFEFF');
+    buffer.writeln('Scheme,Set,Machinery Type,Specs,Sr.No,Date,Voucher No.,Amount,Reg. Page No.,Notes');
+
+    final entries = await _entriesDao.getEntriesForMachinery(machinery.machineryId!);
+    for (final e in entries) {
+      buffer.writeln(
+        '"${scheme?.schemeName ?? ''}","${setModel.setLabel}","${machinery.machineryType}","${machinery.displayLabel}",${e.serialNo},"${e.entryDate}",${e.voucherNo ?? ''},${e.amount},"${e.regPageNo ?? ''}","${e.notes ?? ''}"',
+      );
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final filename =
+        '${'${scheme?.schemeName ?? 'Scheme'} ${setModel.setLabel}'.replaceAll(RegExp(r'[^\\w\\s]'), '_')}_${machinery.machineryType}_Export.csv';
+    final file = File('${dir.path}/$filename');
+    await file.writeAsString(buffer.toString());
+    return file.path;
+  }
+
+  // ─────────────────── Miscellaneous Export ───────────────────
+
+  Future<List<_MiscRecordExport>> _loadMiscRecords({String? recordId}) async {
+    final rawRecords = await _miscDao.getAllRecords();
+    final all = rawRecords
+        .map((e) => _MiscRecordExport.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+    if (recordId == null || recordId.trim().isEmpty) return all;
+    return all.where((r) => r.id == recordId).toList();
+  }
+
+  Future<Uint8List> exportMiscellaneousToPdf({String? recordId}) async {
+    final records = await _loadMiscRecords(recordId: recordId);
+    if (records.isEmpty) {
+      throw Exception('No miscellaneous data found to export');
+    }
+
+    final pdf = pw.Document();
+    final totalEntries = records.fold<int>(0, (sum, r) => sum + r.entries.length);
+    final totalAmount = records.fold<double>(0, (sum, r) => sum + r.totalAmount);
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(18),
+        footer: (context) => pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text('Prepared by City Water Works',
+                style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+            pw.Text('Page ${context.pageNumber} of ${context.pagesCount}',
+                style: const pw.TextStyle(fontSize: 8)),
+          ],
+        ),
+        build: (context) => [
+          pw.Text('Miscellaneous Expenditure Report',
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 4),
+          pw.Text('Generated on ${_nowFormatted()}', style: const pw.TextStyle(fontSize: 10)),
+          pw.SizedBox(height: 8),
+            pw.Text('Total Items: ${records.length} | Total Entries: $totalEntries | Total Amount: ${_formatAmount(totalAmount)}',
+              style: const pw.TextStyle(fontSize: 11)),
+          pw.SizedBox(height: 12),
+          ...records.map((record) {
+            final rows = record.entries.isEmpty
+                ? [
+                    ['-', '-', '-', '-', '-']
+                  ]
+                : record.entries
+                    .asMap()
+                    .entries
+                    .map((entry) => [
+                          '${entry.key + 1}',
+                          entry.value.entryDate,
+                          entry.value.voucherNo ?? '-',
+                          _formatAmount(entry.value.amount),
+                          entry.value.regPageNo ?? '-',
+                        ])
+                    .toList();
+
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Container(
+                  width: double.infinity,
+                  padding: const pw.EdgeInsets.all(6),
+                  decoration: pw.BoxDecoration(color: PdfColors.grey200),
+                  child: pw.Text(
+                    '${record.title} (${record.category}) | Entries: ${record.entries.length} | Total: ${_formatAmount(record.totalAmount)}',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+                  ),
+                ),
+                pw.TableHelper.fromTextArray(
+                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
+                  headerDecoration: pw.BoxDecoration(color: PdfColor.fromHex('#1E3A5F')),
+                  cellStyle: const pw.TextStyle(fontSize: 8),
+                  cellAlignment: pw.Alignment.center,
+                  headerAlignment: pw.Alignment.center,
+                  headers: const ['Sr.No', 'Date', 'Voucher No.', 'Amount (PKR)', 'Reg. Page No.'],
+                  data: rows,
+                ),
+                pw.SizedBox(height: 10),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  Future<String> exportMiscellaneousToExcel({String? recordId}) async {
+    final records = await _loadMiscRecords(recordId: recordId);
+    if (records.isEmpty) {
+      throw Exception('No miscellaneous data found to export');
+    }
+
+    final excel = xl.Excel.createExcel();
+    final sheet = excel['Miscellaneous'];
+    final headers = ['Title', 'Category', 'Sr.No', 'Date', 'Voucher No.', 'Amount (PKR)', 'Reg. Page No.'];
+
+    for (int i = 0; i < headers.length; i++) {
+      final cell = sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0));
+      cell.value = xl.TextCellValue(headers[i]);
+      cell.cellStyle = xl.CellStyle(
+        bold: true,
+        backgroundColorHex: xl.ExcelColor.fromHexString('#1E3A5F'),
+        fontColorHex: xl.ExcelColor.fromHexString('#FFFFFF'),
+      );
+    }
+
+    int row = 1;
+    for (final record in records) {
+      if (record.entries.isEmpty) {
+        sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: row)).value =
+            xl.TextCellValue(record.title);
+        sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row)).value =
+            xl.TextCellValue(record.category);
+        row++;
+        continue;
+      }
+
+      for (int i = 0; i < record.entries.length; i++) {
+        final e = record.entries[i];
+        sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: row)).value = xl.TextCellValue(record.title);
+        sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row)).value = xl.TextCellValue(record.category);
+        sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: row)).value = xl.IntCellValue(i + 1);
+        sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: row)).value = xl.TextCellValue(e.entryDate);
+        sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: row)).value = xl.TextCellValue(e.voucherNo ?? '');
+        sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: row)).value = xl.DoubleCellValue(e.amount);
+        sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: row)).value = xl.TextCellValue(e.regPageNo ?? '');
+        row++;
+      }
+    }
+
+    if (excel.tables.containsKey('Sheet1')) {
+      excel.delete('Sheet1');
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final filename = 'Miscellaneous_Export.xlsx';
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(excel.encode()!);
+    return file.path;
+  }
+
+  Future<String> exportMiscellaneousToCsv({String? recordId}) async {
+    final records = await _loadMiscRecords(recordId: recordId);
+    if (records.isEmpty) {
+      throw Exception('No miscellaneous data found to export');
+    }
+
+    final buffer = StringBuffer();
+    buffer.write('\uFEFF');
+    buffer.writeln('Title,Category,Sr.No,Date,Voucher No.,Amount (PKR),Reg. Page No.');
+
+    for (final record in records) {
+      if (record.entries.isEmpty) {
+        buffer.writeln('"${record.title}","${record.category}",,,,,');
+        continue;
+      }
+
+      for (int i = 0; i < record.entries.length; i++) {
+        final e = record.entries[i];
+        buffer.writeln(
+          '"${record.title}","${record.category}",${i + 1},"${e.entryDate}","${e.voucherNo ?? ''}",${e.amount},"${e.regPageNo ?? ''}"',
+        );
+      }
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final filename = 'Miscellaneous_Export.csv';
+    final file = File('${dir.path}/$filename');
+    await file.writeAsString(buffer.toString());
+    return file.path;
+  }
 }
 
 class _MachineryTemplate {
@@ -1175,4 +1518,57 @@ class _MachineryTemplate {
     required this.type,
     required this.label,
   });
+}
+
+class _MiscRecordExport {
+  final String id;
+  final String title;
+  final String category;
+  final List<_MiscEntryExport> entries;
+
+  _MiscRecordExport({
+    required this.id,
+    required this.title,
+    required this.category,
+    required this.entries,
+  });
+
+  double get totalAmount => entries.fold<double>(0, (sum, e) => sum + e.amount);
+
+  factory _MiscRecordExport.fromJson(Map<String, dynamic> json) {
+    return _MiscRecordExport(
+      id: (json['id'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      category: (json['category'] ?? 'Miscellaneous').toString(),
+      entries: (json['entries'] is List)
+          ? (json['entries'] as List)
+              .whereType<Map>()
+              .map((e) => _MiscEntryExport.fromJson(Map<String, dynamic>.from(e)))
+              .toList()
+          : <_MiscEntryExport>[],
+    );
+  }
+}
+
+class _MiscEntryExport {
+  final String entryDate;
+  final String? voucherNo;
+  final double amount;
+  final String? regPageNo;
+
+  _MiscEntryExport({
+    required this.entryDate,
+    this.voucherNo,
+    required this.amount,
+    this.regPageNo,
+  });
+
+  factory _MiscEntryExport.fromJson(Map<String, dynamic> json) {
+    return _MiscEntryExport(
+      entryDate: (json['entryDate'] ?? '').toString(),
+      voucherNo: json['voucherNo']?.toString(),
+      amount: double.tryParse((json['amount'] ?? 0).toString()) ?? 0,
+      regPageNo: json['regPageNo']?.toString(),
+    );
+  }
 }

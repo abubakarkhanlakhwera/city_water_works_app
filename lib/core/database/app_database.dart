@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dart:convert';
 
 class AppDatabase {
   static final AppDatabase instance = AppDatabase._init();
@@ -25,7 +26,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
       onConfigure: (db) async {
@@ -110,6 +111,8 @@ class AppDatabase {
       )
     ''');
 
+    await _createMiscTables(db);
+
     // Insert default machinery types
     await _insertDefaultTypes(db);
     await _insertDefaultSettings(db);
@@ -159,7 +162,7 @@ class AppDatabase {
     final defaults = {
       'theme': 'system',
       'primary_color': '#1E3A5F',
-      'currency_symbol': 'Rs.',
+      'currency_symbol': 'PKR',
       'amount_format': 'formatted', // formatted = 1,000; plain = 1000
       'auto_backup': 'off',
       'default_export_format': 'pdf',
@@ -223,6 +226,91 @@ class AppDatabase {
         whereArgs: ['miscellaneous'],
       );
     }
+
+    if (oldVersion < 5) {
+      await _createMiscTables(db);
+      await _migrateMiscFromSettings(db);
+    }
+  }
+
+  Future<void> _createMiscTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS miscellaneous_items (
+        item_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS miscellaneous_entries (
+        entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id INTEGER NOT NULL,
+        serial_no INTEGER NOT NULL,
+        entry_date TEXT NOT NULL,
+        voucher_no TEXT,
+        amount REAL NOT NULL,
+        reg_page_no TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (item_id) REFERENCES miscellaneous_items (item_id) ON DELETE CASCADE
+      )
+    ''');
+  }
+
+  Future<void> _migrateMiscFromSettings(Database db) async {
+    final existing = await db.query('miscellaneous_items', limit: 1);
+    if (existing.isNotEmpty) return;
+
+    final settings = await db.query(
+      'app_settings',
+      where: 'key = ?',
+      whereArgs: ['misc_records_json'],
+      limit: 1,
+    );
+    if (settings.isEmpty) return;
+
+    final raw = (settings.first['value'] as String?)?.trim();
+    if (raw == null || raw.isEmpty) return;
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+
+      for (final item in decoded.whereType<Map>()) {
+        final map = Map<String, dynamic>.from(item);
+        final now = _nowFormatted();
+        final itemId = await db.insert('miscellaneous_items', {
+          'title': (map['title'] ?? '').toString(),
+          'category': (map['category'] ?? 'Miscellaneous').toString(),
+          'created_at': now,
+          'updated_at': now,
+        });
+
+        final entries = map['entries'];
+        if (entries is List) {
+          for (int i = 0; i < entries.length; i++) {
+            final entry = entries[i];
+            if (entry is! Map) continue;
+            final e = Map<String, dynamic>.from(entry);
+            await db.insert('miscellaneous_entries', {
+              'item_id': itemId,
+              'serial_no': i + 1,
+              'entry_date': (e['entryDate'] ?? '').toString(),
+              'voucher_no': e['voucherNo']?.toString(),
+              'amount': double.tryParse((e['amount'] ?? 0).toString()) ?? 0,
+              'reg_page_no': e['regPageNo']?.toString(),
+              'notes': e['notes']?.toString(),
+              'created_at': now,
+              'updated_at': now,
+            });
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   String _nowFormatted() {

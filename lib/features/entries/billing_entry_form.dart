@@ -224,7 +224,7 @@ class _BillingEntryFormState extends State<BillingEntryForm> {
                   Expanded(
                     child: AmountField(
                       controller: _amountCtrl,
-                      label: 'Amount (Rs.)',
+                      label: 'Amount (PKR)',
                       validator: (v) {
                         if (v == null || v.isEmpty) return 'Required';
                         final num = double.tryParse(v.replaceAll(',', ''));

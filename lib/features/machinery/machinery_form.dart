@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import '../../core/database/daos/machinery_dao.dart';
 import '../../core/database/daos/machinery_types_dao.dart';
+import '../../core/database/daos/settings_dao.dart';
 import '../../core/models/machinery.dart';
 import '../../core/models/machinery_type.dart';
 import '../../shared/widgets/app_text_field.dart';
@@ -18,7 +20,7 @@ class MachineryForm extends StatefulWidget {
 class _MachineryFormState extends State<MachineryForm> {
   static const String _defaultMotorBrand = 'Siemns';
   static const List<String> _defaultPumpSizes = ['4x5', '3x5'];
-  static const List<String> _miscItemTypes = ['Leakage', 'Pipes', 'Starter', 'Valves'];
+  static const List<String> _defaultMiscItemTypes = ['Leakage', 'Pipes', 'Starter', 'Valves'];
   static const List<String> _miscInchSizes = [
     '3 Inches',
     '4 Inches',
@@ -50,6 +52,10 @@ class _MachineryFormState extends State<MachineryForm> {
   final _formKey = GlobalKey<FormState>();
   final _dao = MachineryDao();
   final _typesDao = MachineryTypesDao();
+  final _settingsDao = SettingsDao();
+
+  List<String> _miscItemTypes = List<String>.from(_defaultMiscItemTypes);
+  Map<String, List<String>> _miscCustomValuesByType = {};
 
   List<MachineryType> _types = [];
   MachineryType? _selectedType;
@@ -68,6 +74,42 @@ class _MachineryFormState extends State<MachineryForm> {
   }
 
   Future<void> _loadTypes() async {
+    final miscItemsRaw = await _settingsDao.getSetting('misc_items_json');
+    final miscCustomValuesRaw = await _settingsDao.getSetting('misc_custom_values_json');
+    if (miscItemsRaw != null && miscItemsRaw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(miscItemsRaw);
+        if (decoded is List) {
+          final loaded = decoded.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+          if (loaded.isNotEmpty) {
+            _miscItemTypes = loaded;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (miscCustomValuesRaw != null && miscCustomValuesRaw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(miscCustomValuesRaw);
+        if (decoded is Map) {
+          final mapped = <String, List<String>>{};
+          decoded.forEach((key, value) {
+            if (value is List) {
+              final values = value
+                  .map((e) => e.toString().trim())
+                  .where((e) => e.isNotEmpty)
+                  .toSet()
+                  .toList();
+              if (values.isNotEmpty) {
+                mapped[key.toString().toLowerCase()] = values;
+              }
+            }
+          });
+          _miscCustomValuesByType = mapped;
+        }
+      } catch (_) {}
+    }
+
     var types = await _typesDao.getAllTypes();
 
     final existing = types.map((t) => t.typeName.toLowerCase()).toSet();
@@ -123,7 +165,7 @@ class _MachineryFormState extends State<MachineryForm> {
     final miscIndex = types.indexWhere((t) => t.typeName.toLowerCase() == 'miscellaneous');
     if (miscIndex != -1) {
       final miscType = types[miscIndex];
-      if (_isLegacyMiscellaneousType(miscType)) {
+      if (_shouldSyncMiscellaneousType(miscType)) {
         final updated = MachineryType(
           typeId: miscType.typeId,
           typeName: miscType.typeName,
@@ -172,6 +214,16 @@ class _MachineryFormState extends State<MachineryForm> {
       !names.contains('sub item') ||
         !names.contains('size (inches)') ||
         !names.contains('starter type');
+  }
+
+  bool _shouldSyncMiscellaneousType(MachineryType type) {
+    if (_isLegacyMiscellaneousType(type)) return true;
+    final itemTypeAttr = type.attributes.where((a) => a.name.toLowerCase() == 'item type').firstOrNull;
+    if (itemTypeAttr == null) return true;
+
+    final existing = itemTypeAttr.options.map((e) => e.trim().toLowerCase()).toSet();
+    final target = _miscItemTypes.map((e) => e.trim().toLowerCase()).toSet();
+    return existing.length != target.length || !existing.containsAll(target);
   }
 
   @override
@@ -240,6 +292,11 @@ class _MachineryFormState extends State<MachineryForm> {
 
   List<String> _miscSubItemsForSelectedItemType() {
     final selectedItemType = (_specControllers['Item Type']?.text ?? '').toLowerCase();
+    final customValues = _miscCustomValuesByType[selectedItemType];
+    if (customValues != null && customValues.isNotEmpty) {
+      return customValues;
+    }
+
     switch (selectedItemType) {
       case 'leakage':
         return const ['Main Leakage', 'Joint Leakage', 'Service Leakage'];
@@ -492,11 +549,16 @@ class _MachineryFormState extends State<MachineryForm> {
                     if (ctrl == null) return const SizedBox.shrink();
                     final useDropdown = _shouldUseDropdown(attr);
                     final options = _getAttributeOptions(attr);
+                    final initialValue = ctrl.text.isEmpty ? null : ctrl.text;
+                    final safeOptions = List<String>.from(options);
+                    if (initialValue != null && !safeOptions.contains(initialValue)) {
+                      safeOptions.add(initialValue);
+                    }
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: useDropdown && options.isNotEmpty
+                      child: useDropdown && safeOptions.isNotEmpty
                           ? DropdownButtonFormField<String>(
-                              initialValue: ctrl.text.isEmpty ? null : ctrl.text,
+                              initialValue: initialValue,
                               decoration: InputDecoration(
                                 labelText: '${attr.name}${attr.required ? ' *' : ''}',
                                 border: const OutlineInputBorder(),
@@ -506,7 +568,7 @@ class _MachineryFormState extends State<MachineryForm> {
                                   onPressed: () => _addDropdownOption(attr),
                                 ),
                               ),
-                              items: options
+                                items: safeOptions
                                   .map((o) => DropdownMenuItem(value: o, child: Text(o)))
                                   .toList(),
                               onChanged: (v) {

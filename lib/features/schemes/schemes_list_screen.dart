@@ -45,25 +45,29 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
   }
 
   Future<void> _addScheme() async {
-    final result = await showModalBottomSheet<bool>(
+    final result = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: SchemeForm(),
+        ),
       ),
-      builder: (ctx) => const SchemeForm(),
     );
     if (result == true) _loadSchemes();
   }
 
   Future<void> _editScheme(Scheme scheme) async {
-    final result = await showModalBottomSheet<bool>(
+    final result = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: SchemeForm(scheme: scheme),
+        ),
       ),
-      builder: (ctx) => SchemeForm(scheme: scheme),
     );
     if (result == true) _loadSchemes();
   }
@@ -205,7 +209,7 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
                                             label: '${scheme.setCount} Sets',
                                           ),
                                           _InfoChip(
-                                            icon: Icons.currency_rupee,
+                                            icon: Icons.payments_outlined,
                                             label: CurrencyUtils.formatAmountShort(scheme.totalAmount),
                                           ),
                                         ],
@@ -252,7 +256,7 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
                                                 ),
                                                 const SizedBox(width: 12),
                                                 _InfoChip(
-                                                  icon: Icons.currency_rupee,
+                                                  icon: Icons.payments_outlined,
                                                   label: CurrencyUtils.formatAmountShort(scheme.totalAmount),
                                                 ),
                                               ],

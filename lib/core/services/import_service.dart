@@ -761,7 +761,14 @@ class ImportService {
     if (value is DoubleCellValue) return value.value;
     if (value is int) return value.toDouble();
     if (value is IntCellValue) return value.value.toDouble();
-    final str = value.toString().trim().replaceAll(',', '').replaceAll('Rs.', '').replaceAll('Rs', '');
+    final str = value
+      .toString()
+      .trim()
+      .replaceAll(',', '')
+      .replaceAll('PKR.', '')
+      .replaceAll('PKR', '')
+      .replaceAll('Rs.', '')
+      .replaceAll('Rs', '');
     return double.tryParse(str);
   }
 
