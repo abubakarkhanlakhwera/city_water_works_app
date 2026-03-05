@@ -194,6 +194,7 @@ class _AppShellState extends State<AppShell> {
           currentUsername: widget.currentUsername,
           onLogout: widget.onLogout,
           onAppNameChanged: (value) => setState(() => _appDisplayName = value),
+          onDataRestored: () => setState(() => _selectedIndex = 0),
         );
       default:
         return const DashboardScreen();

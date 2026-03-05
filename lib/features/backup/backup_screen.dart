@@ -7,7 +7,8 @@ import '../../core/services/backup_service.dart';
 import '../../shared/theme/app_colors.dart';
 
 class BackupScreen extends StatefulWidget {
-  const BackupScreen({super.key});
+  final VoidCallback? onDataRestored;
+  const BackupScreen({super.key, this.onDataRestored});
 
   @override
   State<BackupScreen> createState() => _BackupScreenState();
@@ -83,29 +84,62 @@ class _BackupScreenState extends State<BackupScreen> {
           await Share.shareXFiles([XFile(filePath)]);
         }
 
+        final suggestedName = filePath.split(Platform.pathSeparator).last;
+        final isMobile = Platform.isAndroid || Platform.isIOS;
+
         if (action == _backupActionSaveDownloads) {
-          final downloadsPath = await _backupService.saveBackupToDownloads(filePath);
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Backup saved to Downloads:\n$downloadsPath')),
-          );
+          if (isMobile) {
+            // Android/iOS: SAF requires writing bytes directly via FilePicker
+            final fileBytes = await File(filePath).readAsBytes();
+            final savedPath = await FilePicker.platform.saveFile(
+              dialogTitle: 'Save backup to Downloads',
+              fileName: suggestedName,
+              bytes: fileBytes,
+            );
+            if (!mounted) return;
+            if (savedPath != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Backup saved successfully')),
+              );
+            }
+          } else {
+            final downloadsPath = await _backupService.saveBackupToDownloads(filePath);
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Backup saved to Downloads:\n$downloadsPath')),
+            );
+          }
         }
 
         if (action == _backupActionSelectPath) {
-          final suggestedName = filePath.split(Platform.pathSeparator).last;
-          final destinationPath = await FilePicker.platform.saveFile(
-            dialogTitle: 'Choose where to save backup',
-            fileName: suggestedName,
-            type: FileType.custom,
-            allowedExtensions: const ['cww'],
-          );
-
-          if (destinationPath != null && destinationPath.trim().isNotEmpty) {
-            final savedPath = await _backupService.saveBackupToPath(filePath, destinationPath);
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Backup saved to:\n$savedPath')),
+          if (isMobile) {
+            // Android/iOS: must pass bytes — FilePicker writes the file via SAF
+            final fileBytes = await File(filePath).readAsBytes();
+            final savedPath = await FilePicker.platform.saveFile(
+              dialogTitle: 'Choose where to save backup',
+              fileName: suggestedName,
+              bytes: fileBytes,
             );
+            if (!mounted) return;
+            if (savedPath != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Backup saved successfully')),
+              );
+            }
+          } else {
+            final destinationPath = await FilePicker.platform.saveFile(
+              dialogTitle: 'Choose where to save backup',
+              fileName: suggestedName,
+              type: FileType.custom,
+              allowedExtensions: const ['cww'],
+            );
+            if (destinationPath != null && destinationPath.trim().isNotEmpty) {
+              final savedPath = await _backupService.saveBackupToPath(filePath, destinationPath);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Backup saved to:\n$savedPath')),
+              );
+            }
           }
         }
       }
@@ -177,8 +211,9 @@ class _BackupScreenState extends State<BackupScreen> {
         throw Exception('Unable to access selected backup file.');
       }
       if (mounted) {
+        widget.onDataRestored?.call();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup restored successfully. Restarting...')),
+          const SnackBar(content: Text('Backup restored successfully!')),
         );
         // Navigate to root
         Navigator.of(context).popUntil((route) => route.isFirst);

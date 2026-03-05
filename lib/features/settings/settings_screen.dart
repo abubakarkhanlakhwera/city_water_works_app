@@ -12,6 +12,7 @@ class SettingsScreen extends StatefulWidget {
   final VoidCallback? onThemeChanged;
   final VoidCallback? onLogout;
   final ValueChanged<String>? onAppNameChanged;
+  final VoidCallback? onDataRestored;
   final String? currentUsername;
 
   const SettingsScreen({
@@ -19,6 +20,7 @@ class SettingsScreen extends StatefulWidget {
     this.onThemeChanged,
     this.onLogout,
     this.onAppNameChanged,
+    this.onDataRestored,
     this.currentUsername,
   });
 
@@ -465,7 +467,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       subtitle: 'Manage your data backups',
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const BackupScreen()),
+                        MaterialPageRoute(builder: (_) => BackupScreen(onDataRestored: widget.onDataRestored)),
                       ),
                     ),
                     _buildDivider(),

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:archive/archive.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:excel/excel.dart' as xl;
@@ -18,6 +19,35 @@ class ExportService {
   final SetsDao _setsDao = SetsDao();
   final MachineryDao _machineryDao = MachineryDao();
   final BillingEntriesDao _entriesDao = BillingEntriesDao();
+
+  /// Removes UTF-8 BOM (\xEF\xBB\xBF) from XML files inside the xlsx ZIP.
+  /// The excel Dart package writes a BOM into sharedStrings.xml which causes
+  /// cell A1 to display as "ï»¿Title" when opened in Google Sheets / Android apps.
+  Uint8List _fixExcelBom(List<int> xlsxBytes) {
+    try {
+      final input = xlsxBytes is Uint8List ? xlsxBytes : Uint8List.fromList(xlsxBytes);
+      final archive = ZipDecoder().decodeBytes(input);
+      var modified = false;
+      for (int i = 0; i < archive.files.length; i++) {
+        final f = archive.files[i];
+        if (!f.isFile || !f.name.endsWith('.xml')) continue;
+        final content = f.content as List<int>;
+        if (content.length >= 3 &&
+            content[0] == 0xEF &&
+            content[1] == 0xBB &&
+            content[2] == 0xBF) {
+          final stripped = content.sublist(3);
+          archive.files[i] = ArchiveFile(f.name, stripped.length, stripped);
+          modified = true;
+        }
+      }
+      if (!modified) return input;
+      final encoded = ZipEncoder().encode(archive);
+      return encoded != null ? Uint8List.fromList(encoded) : input;
+    } catch (_) {
+      return xlsxBytes is Uint8List ? xlsxBytes : Uint8List.fromList(xlsxBytes);
+    }
+  }
   final MiscellaneousDao _miscDao = MiscellaneousDao();
 
   String _formatAmount(double amount) {
@@ -1116,7 +1146,7 @@ class ExportService {
     final dir = await getApplicationDocumentsDirectory();
     final filename = '${scheme.schemeName.replaceAll(RegExp(r'[^\w\s]'), '_')}_Export.xlsx';
     final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(excel.encode()!);
+    await file.writeAsBytes(_fixExcelBom(excel.encode()!));
     return file.path;
   }
 
@@ -1181,7 +1211,7 @@ class ExportService {
     final dir = await getApplicationDocumentsDirectory();
     final filename = '${baseName.replaceAll(RegExp(r'[^\\w\\s]'), '_')}_Export.xlsx';
     final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(excel.encode()!);
+    await file.writeAsBytes(_fixExcelBom(excel.encode()!));
     return file.path;
   }
 
@@ -1238,7 +1268,7 @@ class ExportService {
     final dir = await getApplicationDocumentsDirectory();
     final filename = '${baseName.replaceAll(RegExp(r'[^\\w\\s]'), '_')}_${machinery.machineryType}_Export.xlsx';
     final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(excel.encode()!);
+    await file.writeAsBytes(_fixExcelBom(excel.encode()!));
     return file.path;
   }
 
@@ -1377,7 +1407,7 @@ class ExportService {
           ...records.map((record) {
             final rows = record.entries.isEmpty
                 ? [
-                    ['-', '-', '-', '-', '-']
+                    ['-', '-', '-', '-', '-', '-']
                   ]
                 : record.entries
                     .asMap()
@@ -1385,6 +1415,7 @@ class ExportService {
                     .map((entry) => [
                           '${entry.key + 1}',
                           entry.value.entryDate,
+                          entry.value.location ?? '-',
                           entry.value.voucherNo ?? '-',
                           _formatAmount(entry.value.amount),
                           entry.value.regPageNo ?? '-',
@@ -1409,7 +1440,7 @@ class ExportService {
                   cellStyle: const pw.TextStyle(fontSize: 8),
                   cellAlignment: pw.Alignment.center,
                   headerAlignment: pw.Alignment.center,
-                  headers: const ['Sr.No', 'Date', 'Voucher No.', 'Amount (PKR)', 'Reg. Page No.'],
+                  headers: const ['Sr.No', 'Date', 'Location', 'Voucher No.', 'Amount (PKR)', 'Reg. Page No.'],
                   data: rows,
                 ),
                 pw.SizedBox(height: 10),
@@ -1474,7 +1505,7 @@ class ExportService {
     final dir = await getApplicationDocumentsDirectory();
     final filename = 'Miscellaneous_Export.xlsx';
     final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(excel.encode()!);
+    await file.writeAsBytes(_fixExcelBom(excel.encode()!));
     return file.path;
   }
 
@@ -1552,12 +1583,16 @@ class _MiscRecordExport {
 
 class _MiscEntryExport {
   final String entryDate;
+  final String? location;
+  final String? size;
   final String? voucherNo;
   final double amount;
   final String? regPageNo;
 
   _MiscEntryExport({
     required this.entryDate,
+    this.location,
+    this.size,
     this.voucherNo,
     required this.amount,
     this.regPageNo,
@@ -1566,6 +1601,8 @@ class _MiscEntryExport {
   factory _MiscEntryExport.fromJson(Map<String, dynamic> json) {
     return _MiscEntryExport(
       entryDate: (json['entryDate'] ?? '').toString(),
+      location: json['location']?.toString(),
+      size: json['size']?.toString(),
       voucherNo: json['voucherNo']?.toString(),
       amount: double.tryParse((json['amount'] ?? 0).toString()) ?? 0,
       regPageNo: json['regPageNo']?.toString(),

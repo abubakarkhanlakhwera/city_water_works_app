@@ -170,7 +170,10 @@ class BackupService {
     }
 
     // Write restored DB
-    await targetFile.writeAsBytes(dbBackupFile.content as List<int>);
+    final dbContent = dbBackupFile.content;
+    await targetFile.writeAsBytes(
+      dbContent is Uint8List ? dbContent : Uint8List.fromList(dbContent as List<int>),
+    );
 
     // Re-initialize database
     await _db.database;

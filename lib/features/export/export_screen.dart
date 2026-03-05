@@ -38,10 +38,10 @@ class _ExportScreenState extends State<ExportScreen> {
   SetModel? _selectedSet;
   Machinery? _selectedMachinery;
   List<Map<String, String>> _miscRecords = [];
-  String _miscExportMode = 'complete';
+  String _miscExportMode = 'single';
   String? _selectedMiscRecordId;
   String _exportFormat = 'pdf';
-  String _exportScope = 'scheme';
+  String _exportScope = 'set';
 
   bool _isLoading = true;
   bool _isExporting = false;
@@ -273,6 +273,19 @@ class _ExportScreenState extends State<ExportScreen> {
     final defaultName = preferredFileName?.trim().isNotEmpty == true
         ? preferredFileName!
         : p.basename(generatedPath);
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      // On mobile, FilePicker.saveFile requires bytes directly
+      final fileBytes = await File(generatedPath).readAsBytes();
+      await FilePicker.platform.saveFile(
+        dialogTitle: 'Save Export File',
+        fileName: defaultName,
+        bytes: fileBytes,
+      );
+      // Always return the original app-docs path so sharing still works
+      return generatedPath;
+    }
+
     final pickedPath = await FilePicker.platform.saveFile(
       dialogTitle: 'Save Export File',
       fileName: defaultName,
@@ -294,6 +307,22 @@ class _ExportScreenState extends State<ExportScreen> {
   }
 
   Future<String> _savePdfWithPathChoice(Uint8List bytes, String filename) async {
+    // Always save to app docs first — gives a real file path for sharing on all platforms
+    final shareablePath = await _exportService.savePdf(bytes, filename);
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      // Also let user pick a save location; FilePicker writes via SAF on its own
+      await FilePicker.platform.saveFile(
+        dialogTitle: 'Choose where to save',
+        fileName: filename,
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+        bytes: bytes,
+      );
+      return shareablePath; // Return real app-docs path for sharing
+    }
+
+    // Desktop: get path from picker, then write bytes manually
     final pickedPath = await _pickExportPath(filename, const ['pdf']);
     if (pickedPath == null || pickedPath.trim().isEmpty) {
       return _exportService.savePdf(bytes, filename);
@@ -356,18 +385,19 @@ class _ExportScreenState extends State<ExportScreen> {
             icon: const Icon(Icons.save_alt),
             label: const Text('Save As'),
           ),
-          TextButton.icon(
-            onPressed: () async {
-              if (Platform.isWindows) {
-                await Process.run('explorer.exe', ['/select,', path]);
-              } else {
-                final folder = p.dirname(path);
-                await Process.run('xdg-open', [folder]);
-              }
-            },
-            icon: const Icon(Icons.folder_open),
-            label: const Text('Open Folder'),
-          ),
+          if (!Platform.isAndroid && !Platform.isIOS)
+            TextButton.icon(
+              onPressed: () async {
+                if (Platform.isWindows) {
+                  await Process.run('explorer.exe', ['/select,', path]);
+                } else {
+                  final folder = p.dirname(path);
+                  await Process.run('xdg-open', [folder]);
+                }
+              },
+              icon: const Icon(Icons.folder_open),
+              label: const Text('Open Folder'),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Close'),
@@ -410,7 +440,7 @@ class _ExportScreenState extends State<ExportScreen> {
                   segments: const [
                     ButtonSegment(value: 'set', label: Text('Single Set'), icon: Icon(Icons.folder)),
                     ButtonSegment(
-                        value: 'scheme', label: Text('Entire Scheme'), icon: Icon(Icons.business)),
+                        value: 'scheme', label: Text('Entire Schemes'), icon: Icon(Icons.business)),
                     ButtonSegment(
                         value: 'miscellaneous',
                         label: Text('Miscellaneous'),
@@ -423,7 +453,7 @@ class _ExportScreenState extends State<ExportScreen> {
                     _selectedMachinery = null;
                     _machineryForSet = [];
                     if (_exportScope == 'miscellaneous') {
-                      _miscExportMode = 'complete';
+                      _miscExportMode = 'single';
                       _selectedMiscRecordId = null;
                     }
                   }),
