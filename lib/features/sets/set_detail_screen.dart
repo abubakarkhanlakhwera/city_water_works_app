@@ -351,7 +351,8 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
                 headingRowColor: WidgetStateProperty.all(AppColors.primary.withOpacity(0.05)),
                 columns: [
                   DataColumn(label: Text('Sr.No', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Date', style: TextStyle(fontWeight: FontWeight.bold))),
+                  if (!isUseless)
+                    DataColumn(label: Text('Date', style: TextStyle(fontWeight: FontWeight.bold))),
                   if (!isUseless)
                     DataColumn(label: Text('Voucher No.', style: TextStyle(fontWeight: FontWeight.bold))),
                   if (!isUseless)
@@ -375,7 +376,7 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
                 rows: entries.map((e) => DataRow(
                   cells: [
                     DataCell(Text('${e.serialNo}')),
-                    DataCell(Text(e.entryDate)),
+                    if (!isUseless) DataCell(Text(e.entryDate)),
                     if (!isUseless) DataCell(Text(e.voucherNo?.toString() ?? '-')),
                     if (!isUseless) DataCell(Text(CurrencyUtils.formatAmount(e.amount))),
                     DataCell(Text(e.regPageNo ?? '-')),
