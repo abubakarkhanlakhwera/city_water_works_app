@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:city_water_works_app/l10n/app_localizations.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io' show Platform;
 import '../../core/services/import_service.dart';
@@ -33,7 +34,8 @@ class _ImportScreenState extends State<ImportScreen> {
         _parseFile();
       }
     } catch (e) {
-      setState(() => _errorMessage = 'Error picking file: $e');
+      final l10n = AppLocalizations.of(context)!;
+      setState(() => _errorMessage = '${l10n.importErrorPickingFile}: $e');
     }
   }
 
@@ -50,9 +52,10 @@ class _ImportScreenState extends State<ImportScreen> {
       final parsedSchemes = await importService.parseExcelFile(_selectedFilePath!);
 
       if (parsedSchemes.isEmpty) {
+        final l10n = AppLocalizations.of(context)!;
         setState(() {
           _isParsing = false;
-          _errorMessage = 'No data found in the Excel file. Make sure it follows the expected format.';
+          _errorMessage = l10n.importNoDataFound;
         });
         return;
       }
@@ -70,18 +73,20 @@ class _ImportScreenState extends State<ImportScreen> {
         );
       }
     } catch (e) {
+      final l10n = AppLocalizations.of(context)!;
       setState(() {
         _isParsing = false;
-        _errorMessage = 'Error parsing file: $e';
+        _errorMessage = '${l10n.importErrorParsingFile}: $e';
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final isCompact = MediaQuery.of(context).size.width < 600;
     return Scaffold(
-      appBar: AppBar(title: const Text('Import from Excel')),
+      appBar: AppBar(title: Text(l10n.importTitle)),
       body: ListView(
         padding: EdgeInsets.all(isCompact ? 16 : 24),
         children: [
@@ -96,19 +101,14 @@ class _ImportScreenState extends State<ImportScreen> {
                     children: [
                       const Icon(Icons.info_outline, color: AppColors.primary),
                       const SizedBox(width: 8),
-                      Text('Import Instructions',
+                      Text(l10n.importInstructionsTitle,
                           style: Theme.of(context).textTheme.titleMedium),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'Select an Excel (.xlsx) file to import billing records.\n\n'
-                    'Expected format:\n'
-                    '• Each sheet represents a Set (e.g., "Tanky 2")\n'
-                    '• Sheets contain machinery sub-heads (Motor, Pump, Transformer, etc.)\n'
-                    '• Columns: Sr.No, Date, Voucher No., Amount, Reg. Page No.\n\n'
-                    'The system will parse and preview the data before importing.',
-                    style: TextStyle(fontSize: 14, height: 1.5),
+                  Text(
+                    l10n.importInstructionsBody,
+                    style: const TextStyle(fontSize: 14, height: 1.5),
                   ),
                 ],
               ),
@@ -137,10 +137,10 @@ class _ImportScreenState extends State<ImportScreen> {
                   const SizedBox(height: 16),
                   Text(
                     _isParsing
-                        ? 'Parsing...'
+                      ? l10n.importParsing
                         : _selectedFilePath != null
                             ? _selectedFilePath!.split(Platform.pathSeparator).last
-                            : 'Tap to select Excel file (.xlsx)',
+                        : l10n.importTapToSelect,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           color: _isParsing ? AppColors.textHint : AppColors.primary,
                         ),
@@ -180,7 +180,7 @@ class _ImportScreenState extends State<ImportScreen> {
 
           // Info footer
           Text(
-            'Supported format: .xlsx (Microsoft Excel)',
+            l10n.importSupportedFormat,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
             textAlign: TextAlign.center,
           ),

@@ -180,6 +180,7 @@ class AppDatabase {
       'auto_backup': 'off',
       'default_export_format': 'pdf',
       'pdf_paper_size': 'a4',
+      'app_language': 'english',
       'remember_me': 'false',
       'logged_in_user': '',
     };

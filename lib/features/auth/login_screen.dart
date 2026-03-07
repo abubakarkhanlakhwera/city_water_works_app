@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:city_water_works_app/l10n/app_localizations.dart';
 import '../../core/database/daos/users_dao.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -34,6 +35,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
+    final l10n = AppLocalizations.of(context)!;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -49,13 +51,13 @@ class _LoginScreenState extends State<LoginScreen> {
         widget.onLoginSuccess(_usernameController.text.trim(), _rememberMe);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid username or password')),
+          SnackBar(content: Text(l10n.loginInvalidCredentials)),
         );
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Login failed: $e')),
+        SnackBar(content: Text('${l10n.loginFailedPrefix}: $e')),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -64,6 +66,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -79,26 +82,26 @@ class _LoginScreenState extends State<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'Water Supply Scheme History',
+                      l10n.appTitle,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Sign in to continue',
+                      l10n.loginSubtitle,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     const SizedBox(height: 20),
                     TextFormField(
                       controller: _usernameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Username',
+                      decoration: InputDecoration(
+                        labelText: l10n.loginUsername,
                         border: OutlineInputBorder(),
                       ),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
-                          return 'Username is required';
+                          return l10n.loginUsernameRequired;
                         }
                         return null;
                       },
@@ -108,7 +111,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _passwordController,
                       obscureText: _obscurePassword,
                       decoration: InputDecoration(
-                        labelText: 'Password',
+                        labelText: l10n.loginPassword,
                         border: const OutlineInputBorder(),
                         suffixIcon: IconButton(
                           onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
@@ -117,7 +120,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Password is required';
+                          return l10n.loginPasswordRequired;
                         }
                         return null;
                       },
@@ -128,13 +131,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       contentPadding: EdgeInsets.zero,
                       value: _rememberMe,
                       onChanged: (v) => setState(() => _rememberMe = v ?? false),
-                      title: const Text('Remember me'),
+                      title: Text(l10n.loginRememberMe),
                       controlAffinity: ListTileControlAffinity.leading,
                     ),
                     const SizedBox(height: 4),
-                    const Text(
-                      'Default login: admin / admin123',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    Text(
+                      l10n.loginDefaultCredentials,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     const SizedBox(height: 16),
                     SizedBox(
@@ -148,7 +151,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Icon(Icons.login),
-                        label: Text(_isLoading ? 'Signing in...' : 'Login'),
+                        label: Text(_isLoading ? l10n.loginSigningIn : l10n.loginButton),
                       ),
                     ),
                   ],

@@ -248,6 +248,7 @@ class ExportService {
     if (setModel == null) throw Exception('Set not found');
 
     final scheme = await _schemesDao.getSchemeById(setModel.schemeId);
+    final isUselessScheme = (scheme?.category ?? '').toLowerCase() == 'useless_item';
     final machineryList = machineryOverride ?? await _machineryDao.getMachineryForSet(setId);
     if (machineryList.isEmpty) {
       throw Exception('No machinery found in selected set');
@@ -296,6 +297,14 @@ class ExportService {
               textAlign: pw.TextAlign.center,
               style: const pw.TextStyle(fontSize: 10),
             ),
+            if (isUselessScheme) ...[
+              pw.SizedBox(height: 2),
+              pw.Text(
+                'Useless Items Transfer Report',
+                textAlign: pw.TextAlign.center,
+                style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+              ),
+            ],
             pw.SizedBox(height: 10),
           ],
         ),
@@ -313,10 +322,11 @@ class ExportService {
             final blockIndex = blockEntry.key;
             final block = blockEntry.value;
             final tableWidth = PdfPageFormat.a4.landscape.width - 36;
-            final totalCols = 1 + (block.length * 3);
+            final perMachineryCols = isUselessScheme ? 6 : 3;
+            final totalCols = 1 + (block.length * perMachineryCols);
             final colWidth = tableWidth / totalCols;
-            final firstHeaderWidth = colWidth * 4;
-            final otherHeaderWidth = colWidth * 3;
+            final firstHeaderWidth = colWidth * (perMachineryCols + 1);
+            final otherHeaderWidth = colWidth * perMachineryCols;
 
             return <pw.Widget>[
               if (blockIndex > 0)
@@ -342,11 +352,20 @@ class ExportService {
               pw.Row(
                 children: [
                   _pdfCell('Sr.No', width: colWidth, bold: true, align: pw.TextAlign.center),
-                  ...block.expand((_) => [
-                        _pdfCell('Date', width: colWidth, bold: true, align: pw.TextAlign.center),
-                        _pdfCell('Voucher No.', width: colWidth, bold: true, align: pw.TextAlign.center),
-                        _pdfCell('Amount', width: colWidth, bold: true, align: pw.TextAlign.center),
-                      ]),
+                  ...block.expand((_) => isUselessScheme
+                      ? [
+                          _pdfCell('Reg. Page No.', width: colWidth, bold: true, align: pw.TextAlign.center),
+                          _pdfCell('Disabled/Closed', width: colWidth, bold: true, align: pw.TextAlign.center),
+                          _pdfCell('Submitted To Store', width: colWidth, bold: true, align: pw.TextAlign.center),
+                          _pdfCell('Transfer Date', width: colWidth, bold: true, align: pw.TextAlign.center),
+                          _pdfCell('Transferred To Scheme', width: colWidth, bold: true, align: pw.TextAlign.center),
+                          _pdfCell('Remarks', width: colWidth, bold: true, align: pw.TextAlign.center),
+                        ]
+                      : [
+                          _pdfCell('Date', width: colWidth, bold: true, align: pw.TextAlign.center),
+                          _pdfCell('Voucher No.', width: colWidth, bold: true, align: pw.TextAlign.center),
+                          _pdfCell('Amount', width: colWidth, bold: true, align: pw.TextAlign.center),
+                        ]),
                 ],
               ),
               ...List.generate(maxRows, (rowIndex) {
@@ -356,6 +375,16 @@ class ExportService {
                     ...block.expand((machinery) {
                       final mEntries = entriesByMachinery[machinery.machineryId!] ?? [];
                       final entry = rowIndex < mEntries.length ? mEntries[rowIndex] : null;
+                      if (isUselessScheme) {
+                        return [
+                          _pdfCell(entry?.regPageNo ?? '-', width: colWidth, align: pw.TextAlign.center),
+                          _pdfCell((entry?.isDisabled ?? false) ? 'Yes' : '-', width: colWidth, align: pw.TextAlign.center),
+                          _pdfCell(entry?.submittedToStoreDate ?? '-', width: colWidth, align: pw.TextAlign.center),
+                          _pdfCell(entry?.transferDate ?? '-', width: colWidth, align: pw.TextAlign.center),
+                          _pdfCell(entry?.transferredToScheme ?? '-', width: colWidth, align: pw.TextAlign.center),
+                          _pdfCell(entry?.remarks ?? entry?.notes ?? '-', width: colWidth, align: pw.TextAlign.center),
+                        ];
+                      }
                       return [
                         _pdfCell(entry?.entryDate ?? '-', width: colWidth, align: pw.TextAlign.center),
                         _pdfCell(entry?.voucherNo?.toString() ?? '-', width: colWidth, align: pw.TextAlign.center),
@@ -438,6 +467,7 @@ class ExportService {
   Future<Uint8List> exportSchemeToPdf(int schemeId) async {
     final scheme = await _schemesDao.getSchemeById(schemeId);
     if (scheme == null) throw Exception('Scheme not found');
+    final isUselessScheme = scheme.category.toLowerCase() == 'useless_item';
 
     final sets = await _setsDao.getSetsForScheme(schemeId);
     final pdf = pw.Document();
@@ -541,10 +571,11 @@ class ExportService {
       for (int blockIndex = 0; blockIndex < machineryBlocks.length; blockIndex++) {
         final block = machineryBlocks[blockIndex];
         final tableWidth = PdfPageFormat.a4.landscape.width - 36;
-        final totalCols = 1 + (block.length * 3);
+        final perMachineryCols = isUselessScheme ? 6 : 3;
+        final totalCols = 1 + (block.length * perMachineryCols);
         final colWidth = tableWidth / totalCols;
-        final firstHeaderWidth = colWidth * 4;
-        final otherHeaderWidth = colWidth * 3;
+        final firstHeaderWidth = colWidth * (perMachineryCols + 1);
+        final otherHeaderWidth = colWidth * perMachineryCols;
 
         if (blockIndex > 0) {
           sectionWidgets.add(
@@ -574,11 +605,20 @@ class ExportService {
           pw.Row(
             children: [
               _pdfCell('Sr.No', width: colWidth, bold: true, align: pw.TextAlign.center),
-              ...block.expand((_) => [
-                    _pdfCell('Date', width: colWidth, bold: true, align: pw.TextAlign.center),
-                    _pdfCell('Voucher No.', width: colWidth, bold: true, align: pw.TextAlign.center),
-                    _pdfCell('Amount', width: colWidth, bold: true, align: pw.TextAlign.center),
-                  ]),
+              ...block.expand((_) => isUselessScheme
+                  ? [
+                      _pdfCell('Reg. Page No.', width: colWidth, bold: true, align: pw.TextAlign.center),
+                      _pdfCell('Disabled/Closed', width: colWidth, bold: true, align: pw.TextAlign.center),
+                      _pdfCell('Submitted To Store', width: colWidth, bold: true, align: pw.TextAlign.center),
+                      _pdfCell('Transfer Date', width: colWidth, bold: true, align: pw.TextAlign.center),
+                      _pdfCell('Transferred To Scheme', width: colWidth, bold: true, align: pw.TextAlign.center),
+                      _pdfCell('Remarks', width: colWidth, bold: true, align: pw.TextAlign.center),
+                    ]
+                  : [
+                      _pdfCell('Date', width: colWidth, bold: true, align: pw.TextAlign.center),
+                      _pdfCell('Voucher No.', width: colWidth, bold: true, align: pw.TextAlign.center),
+                      _pdfCell('Amount', width: colWidth, bold: true, align: pw.TextAlign.center),
+                    ]),
             ],
           ),
         );
@@ -591,6 +631,16 @@ class ExportService {
                 ...block.expand((machinery) {
                   final mEntries = entriesByMachinery[machinery.machineryId!] ?? [];
                   final entry = rowIndex < mEntries.length ? mEntries[rowIndex] : null;
+                  if (isUselessScheme) {
+                    return [
+                      _pdfCell(entry?.regPageNo ?? '-', width: colWidth, align: pw.TextAlign.center),
+                      _pdfCell((entry?.isDisabled ?? false) ? 'Yes' : '-', width: colWidth, align: pw.TextAlign.center),
+                      _pdfCell(entry?.submittedToStoreDate ?? '-', width: colWidth, align: pw.TextAlign.center),
+                      _pdfCell(entry?.transferDate ?? '-', width: colWidth, align: pw.TextAlign.center),
+                      _pdfCell(entry?.transferredToScheme ?? '-', width: colWidth, align: pw.TextAlign.center),
+                      _pdfCell(entry?.remarks ?? entry?.notes ?? '-', width: colWidth, align: pw.TextAlign.center),
+                    ];
+                  }
                   return [
                     _pdfCell(entry?.entryDate ?? '-', width: colWidth, align: pw.TextAlign.center),
                     _pdfCell(entry?.voucherNo?.toString() ?? '-', width: colWidth, align: pw.TextAlign.center),
@@ -626,7 +676,10 @@ class ExportService {
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Text('Scheme Summary Report', style: const pw.TextStyle(fontSize: 10)),
+                pw.Text(
+                  isUselessScheme ? 'Useless Items Transfer Summary' : 'Scheme Summary Report',
+                  style: const pw.TextStyle(fontSize: 10),
+                ),
                 pw.Text('Date: ${_nowFormatted()}', style: const pw.TextStyle(fontSize: 10)),
               ],
             ),

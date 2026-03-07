@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:city_water_works_app/l10n/app_localizations.dart';
 import '../../core/database/daos/schemes_dao.dart';
 import '../../core/models/scheme.dart';
 import '../../shared/theme/app_colors.dart';
@@ -49,9 +50,10 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('${l10n.commonErrorPrefix}: $e'), backgroundColor: AppColors.error),
         );
       }
     }
@@ -86,19 +88,20 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
   }
 
   Future<void> _deleteScheme(Scheme scheme) async {
+    final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Scheme'),
+        title: Text(l10n.schemeDeleteTitle),
         content: Text(
-          'Are you sure you want to delete "${scheme.schemeName}"?\nThis will delete ALL sets, machinery, and billing entries under this scheme.',
+          l10n.schemeDeleteMessage(scheme.schemeName),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.commonCancel)),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Delete'),
+            child: Text(l10n.commonDelete),
           ),
         ],
       ),
@@ -109,7 +112,7 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
       _loadSchemes();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Scheme deleted successfully')),
+          SnackBar(content: Text(l10n.schemeDeletedSuccess)),
         );
       }
     }
@@ -206,8 +209,8 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
                                               if (value == 'delete') _deleteScheme(scheme);
                                             },
                                             itemBuilder: (ctx) => [
-                                              const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                                              const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                              PopupMenuItem(value: 'edit', child: Text(AppLocalizations.of(ctx)!.commonEdit)),
+                                              PopupMenuItem(value: 'delete', child: Text(AppLocalizations.of(ctx)!.commonDelete)),
                                             ],
                                           ),
                                         ],
@@ -219,7 +222,7 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
                                         children: [
                                           _InfoChip(
                                             icon: Icons.settings,
-                                            label: '${scheme.setCount} Sets',
+                                            label: AppLocalizations.of(context)!.schemeSetsCount(scheme.setCount),
                                           ),
                                           _InfoChip(
                                             icon: Icons.payments_outlined,
@@ -265,7 +268,7 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
                                               children: [
                                                 _InfoChip(
                                                   icon: Icons.settings,
-                                                  label: '${scheme.setCount} Sets',
+                                                  label: AppLocalizations.of(context)!.schemeSetsCount(scheme.setCount),
                                                 ),
                                                 const SizedBox(width: 12),
                                                 _InfoChip(
@@ -294,8 +297,8 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
                                           if (value == 'delete') _deleteScheme(scheme);
                                         },
                                         itemBuilder: (ctx) => [
-                                          const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                                          const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                                          PopupMenuItem(value: 'edit', child: Text(AppLocalizations.of(ctx)!.commonEdit)),
+                                          PopupMenuItem(value: 'delete', child: Text(AppLocalizations.of(ctx)!.commonDelete)),
                                         ],
                                       ),
                                     ],

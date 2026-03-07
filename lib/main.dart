@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:city_water_works_app/l10n/app_localizations.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'core/database/app_database.dart';
@@ -32,6 +34,7 @@ void main() async {
   final settingsDao = SettingsDao();
   final darkModePref = await settingsDao.getSetting('dark_mode');
   final isDarkMode = darkModePref == 'true';
+  final appLanguage = await settingsDao.getSetting('app_language');
   final rememberMe = await settingsDao.getSetting('remember_me');
   final rememberedUser = await settingsDao.getSetting('logged_in_user');
 
@@ -39,6 +42,9 @@ void main() async {
 
   runApp(CityWaterWorksApp(
     isDarkMode: isDarkMode,
+    initialLanguage: (appLanguage == null || appLanguage.trim().isEmpty)
+        ? 'english'
+        : appLanguage.trim().toLowerCase(),
     isAuthenticated: startAuthenticated,
     currentUsername: startAuthenticated ? rememberedUser?.trim() : null,
   ));
@@ -46,11 +52,13 @@ void main() async {
 
 class CityWaterWorksApp extends StatefulWidget {
   final bool isDarkMode;
+  final String initialLanguage;
   final bool isAuthenticated;
   final String? currentUsername;
   const CityWaterWorksApp({
     super.key,
     this.isDarkMode = false,
+    this.initialLanguage = 'english',
     this.isAuthenticated = false,
     this.currentUsername,
   });
@@ -65,6 +73,7 @@ class CityWaterWorksApp extends StatefulWidget {
 
 class _CityWaterWorksAppState extends State<CityWaterWorksApp> {
   late bool _isDarkMode;
+  late String _appLanguage;
   late bool _isAuthenticated;
   String? _currentUsername;
   final _settingsDao = SettingsDao();
@@ -73,8 +82,13 @@ class _CityWaterWorksAppState extends State<CityWaterWorksApp> {
   void initState() {
     super.initState();
     _isDarkMode = widget.isDarkMode;
+    _appLanguage = widget.initialLanguage;
     _isAuthenticated = widget.isAuthenticated;
     _currentUsername = widget.currentUsername;
+  }
+
+  Locale _localeFromLanguage(String language) {
+    return language == 'urdu' ? const Locale('ur') : const Locale('en');
   }
 
   Future<void> _handleLoginSuccess(String username, bool rememberMe) async {
@@ -109,11 +123,24 @@ class _CityWaterWorksAppState extends State<CityWaterWorksApp> {
     setState(() => _isDarkMode = pref == 'true');
   }
 
+  void setLanguage(String language) {
+    setState(() => _appLanguage = language.toLowerCase());
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Water Supply Scheme History',
+      onGenerateTitle: (context) =>
+          AppLocalizations.of(context)?.appTitle ?? 'Water Supply Scheme History',
       debugShowCheckedModeBanner: false,
+      locale: _localeFromLanguage(_appLanguage),
+      supportedLocales: const [Locale('en'), Locale('ur')],
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: AppTheme.lightTheme(),
       darkTheme: AppTheme.darkTheme(),
       themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
@@ -164,15 +191,15 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
-  final List<_NavItem> _navItems = [
-    _NavItem(icon: Icons.dashboard, label: 'Dashboard'),
-    _NavItem(icon: Icons.business, label: 'Schemes'),
-    _NavItem(icon: Icons.delete_sweep_outlined, label: 'Useless Items'),
-    _NavItem(icon: Icons.category_outlined, label: 'Miscellaneous'),
-    _NavItem(icon: Icons.upload_file, label: 'Import'),
-    _NavItem(icon: Icons.download, label: 'Export'),
-    _NavItem(icon: Icons.settings, label: 'Settings'),
-  ];
+  List<_NavItem> _navItems(AppLocalizations l10n) => [
+        _NavItem(icon: Icons.dashboard, label: l10n.navDashboard),
+        _NavItem(icon: Icons.business, label: l10n.navSchemes),
+        _NavItem(icon: Icons.delete_sweep_outlined, label: l10n.navUselessItems),
+        _NavItem(icon: Icons.category_outlined, label: l10n.navMiscellaneous),
+        _NavItem(icon: Icons.upload_file, label: l10n.navImport),
+        _NavItem(icon: Icons.download, label: l10n.navExport),
+        _NavItem(icon: Icons.settings, label: l10n.navSettings),
+      ];
 
   Widget _buildPage(int index) {
     switch (index) {
@@ -195,6 +222,7 @@ class _AppShellState extends State<AppShell> {
       case 6:
         return SettingsScreen(
           onThemeChanged: () => CityWaterWorksApp.of(context)?.toggleTheme(),
+          onLanguageChanged: (value) => CityWaterWorksApp.of(context)?.setLanguage(value),
           currentUsername: widget.currentUsername,
           onLogout: widget.onLogout,
           onAppNameChanged: (value) => setState(() => _appDisplayName = value),
@@ -206,6 +234,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget _buildBrandHeader() {
+    final l10n = AppLocalizations.of(context)!;
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 16, 12, 10),
       padding: const EdgeInsets.all(12),
@@ -233,8 +262,8 @@ class _AppShellState extends State<AppShell> {
                         color: _textPrimary,
                         letterSpacing: -0.2)),
                 const SizedBox(height: 2),
-                const Text('Admin Panel',
-                    style: TextStyle(
+                Text(l10n.adminPanel,
+                  style: const TextStyle(
                         fontSize: 10,
                         color: _textSecondary,
                         letterSpacing: 0.7,
@@ -249,6 +278,8 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final navItems = _navItems(l10n);
     final width = MediaQuery.of(context).size.width;
 
     // Desktop: persistent side navigation drawer
@@ -269,9 +300,9 @@ class _AppShellState extends State<AppShell> {
                   Expanded(
                     child: ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      itemCount: _navItems.length,
+                      itemCount: navItems.length,
                       itemBuilder: (context, i) {
-                        final item = _navItems[i];
+                        final item = navItems[i];
                         final selected = i == _selectedIndex;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 4),
@@ -330,7 +361,7 @@ class _AppShellState extends State<AppShell> {
                     child: Icon(Icons.water_drop, size: 18, color: _accent),
                   ),
                 ),
-                destinations: _navItems
+                destinations: navItems
                     .map((item) => NavigationRailDestination(
                           icon: Icon(item.icon),
                           label: Text(item.label),
@@ -358,7 +389,7 @@ class _AppShellState extends State<AppShell> {
         overlayColor: WidgetStateProperty.all(Colors.white.withOpacity(0.04)),
         selectedIndex: _selectedIndex,
         onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-        destinations: _navItems
+        destinations: navItems
             .map((item) => NavigationDestination(
                   icon: Icon(item.icon, color: _textSecondary),
                   selectedIcon: Icon(item.icon, color: _accent),

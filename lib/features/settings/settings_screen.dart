@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'dart:convert';
+import 'package:city_water_works_app/l10n/app_localizations.dart';
 import '../../core/database/daos/settings_dao.dart';
 import '../../core/database/daos/machinery_types_dao.dart';
 import '../../core/database/daos/users_dao.dart';
@@ -10,6 +11,7 @@ import '../backup/backup_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final VoidCallback? onThemeChanged;
+  final ValueChanged<String>? onLanguageChanged;
   final VoidCallback? onLogout;
   final ValueChanged<String>? onAppNameChanged;
   final VoidCallback? onDataRestored;
@@ -18,6 +20,7 @@ class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     this.onThemeChanged,
+    this.onLanguageChanged,
     this.onLogout,
     this.onAppNameChanged,
     this.onDataRestored,
@@ -39,6 +42,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _autoBackup = false;
   bool _isLoading = true;
   String _appName = 'Water Supply Scheme History';
+  String _appLanguage = 'english';
 
   List<MachineryType> _machineryTypes = [];
 
@@ -91,6 +95,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     setState(() => _isLoading = true);
     final darkMode = await _settingsDao.getSetting('dark_mode');
     final autoBackup = await _settingsDao.getSetting('auto_backup');
+    final appLanguage = await _settingsDao.getSetting('app_language');
     final appDisplayName = await _settingsDao.getSetting('app_display_name');
     final miscItemsRaw = await _settingsDao.getSetting('misc_items_json');
     final types = await _typesDao.getAllTypes();
@@ -99,6 +104,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     setState(() {
       _darkMode = darkMode == 'true';
       _autoBackup = autoBackup == 'true';
+        _appLanguage = (appLanguage == null || appLanguage.trim().isEmpty)
+          ? 'english'
+          : appLanguage.trim().toLowerCase();
       _appName = (appDisplayName == null || appDisplayName.trim().isEmpty)
           ? 'Water Supply Scheme History'
           : appDisplayName.trim();
@@ -193,6 +201,18 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _toggleAutoBackup(bool value) async {
     setState(() => _autoBackup = value);
     await _settingsDao.setSetting('auto_backup', value.toString());
+  }
+
+  Future<void> _setAppLanguage(String value) async {
+    final normalized = value.toLowerCase();
+    setState(() => _appLanguage = normalized);
+    await _settingsDao.setSetting('app_language', normalized);
+    widget.onLanguageChanged?.call(normalized);
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context)!;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(normalized == 'urdu' ? l10n.languageSetUrdu : l10n.languageSetEnglish)),
+    );
   }
 
   Future<void> _addMachineryType() async {
@@ -414,6 +434,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     if (_isLoading) {
       return Scaffold(
         backgroundColor: _pageBg,
@@ -433,17 +454,19 @@ class _SettingsScreenState extends State<SettingsScreen>
               delegate: SliverChildListDelegate([
                 const SizedBox(height: 8),
                 _buildSection(
-                  label: 'APPEARANCE',
+                  label: l10n.appearanceLabel,
                   index: 0,
                   children: [
                     _buildToggleTile(
                       icon: Icons.dark_mode_rounded,
                       iconColor: const Color(0xFF7C3AED),
-                      title: 'Dark Mode',
-                      subtitle: 'Switch between light and dark theme',
+                      title: l10n.darkModeTitle,
+                      subtitle: l10n.darkModeSubtitle,
                       value: _darkMode,
                       onChanged: _toggleDarkMode,
                     ),
+                    _buildDivider(),
+                    _buildLanguageTile(l10n),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -521,6 +544,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Widget _buildHeader() {
+    final l10n = AppLocalizations.of(context)!;
     return SliverAppBar(
       expandedHeight: 120,
       pinned: true,
@@ -566,7 +590,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Settings',
+                          l10n.settingsHeading,
                           style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.w700,
@@ -576,7 +600,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         ),
                         SizedBox(height: 4),
                         Text(
-                          'System Configuration',
+                          l10n.settingsSubheading,
                           style: TextStyle(
                             fontSize: 12,
                             color: _textSecondary,
@@ -718,6 +742,47 @@ class _SettingsScreenState extends State<SettingsScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLanguageTile(AppLocalizations l10n) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          const _IconBadge(icon: Icons.language_rounded, color: Color(0xFF3FB950)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.settingsLanguage,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: _textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  l10n.settingsLanguageSubtitle,
+                  style: TextStyle(fontSize: 12, color: _textSecondary),
+                ),
+                const SizedBox(height: 10),
+                SegmentedButton<String>(
+                  segments: [
+                    ButtonSegment(value: 'english', label: Text(l10n.languageEnglish)),
+                    ButtonSegment(value: 'urdu', label: Text(l10n.languageUrdu)),
+                  ],
+                  selected: {_appLanguage},
+                  onSelectionChanged: (v) => _setAppLanguage(v.first),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

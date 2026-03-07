@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:city_water_works_app/l10n/app_localizations.dart';
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
@@ -110,9 +111,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading data: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('${l10n.dashboardLoadError}: $e'), backgroundColor: AppColors.error),
         );
       }
     }
@@ -208,13 +210,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (!mounted) return;
       _showExportSuccessDialog(
         path: path,
-        title: 'Machinery PDF Ready',
-        shareText: 'City Water Works — Machinery Report',
+        title: AppLocalizations.of(context)!.dashboardMachineryPdfReady,
+        shareText: AppLocalizations.of(context)!.dashboardMachineryShareText,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error generating report: $e'), backgroundColor: AppColors.error),
+        SnackBar(content: Text('${AppLocalizations.of(context)!.dashboardGenerateReportError}: $e'), backgroundColor: AppColors.error),
       );
     } finally {
       if (mounted) setState(() => _isDownloadingReport = false);
@@ -234,13 +236,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (!mounted) return;
       _showExportSuccessDialog(
         path: path,
-        title: 'All Machinery PDF Ready',
-        shareText: 'City Water Works — Complete Machinery Report',
+        title: AppLocalizations.of(context)!.dashboardAllMachineryPdfReady,
+        shareText: AppLocalizations.of(context)!.dashboardAllMachineryShareText,
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error generating full report: $e'), backgroundColor: AppColors.error),
+        SnackBar(content: Text('${AppLocalizations.of(context)!.dashboardGenerateFullReportError}: $e'), backgroundColor: AppColors.error),
       );
     } finally {
       if (mounted) setState(() => _isDownloadingAllReport = false);
@@ -297,13 +299,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             const Icon(Icons.check_circle, color: AppColors.success, size: 42),
             const SizedBox(height: 10),
-            Text('File prepared at:\n$path', style: const TextStyle(fontSize: 13)),
+            Text(AppLocalizations.of(ctx)!.dashboardFilePreparedAt(path), style: const TextStyle(fontSize: 13)),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
+            child: Text(AppLocalizations.of(ctx)!.commonClose),
           ),
           TextButton.icon(
             onPressed: () async {
@@ -317,7 +319,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               );
             },
             icon: const Icon(Icons.save_alt),
-            label: const Text('Choose Save Path'),
+            label: Text(AppLocalizations.of(ctx)!.dashboardChooseSavePath),
           ),
           TextButton.icon(
             onPressed: () {
@@ -325,7 +327,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Share.shareXFiles([XFile(path)], text: shareText);
             },
             icon: const Icon(Icons.chat),
-            label: const Text('WhatsApp Share'),
+            label: Text(AppLocalizations.of(ctx)!.commonWhatsappShare),
           ),
           ElevatedButton.icon(
             onPressed: () {
@@ -333,7 +335,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Share.shareXFiles([XFile(path)], text: shareText);
             },
             icon: const Icon(Icons.share),
-            label: const Text('Share'),
+            label: Text(AppLocalizations.of(ctx)!.commonShare),
           ),
         ],
       ),
@@ -361,6 +363,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildModernDashboard(double width) {
+    final l10n = AppLocalizations.of(context)!;
     final isWide = width >= 1100;
     final now = DateTime.now();
     final dateLabel =
@@ -387,11 +390,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text('Dashboard',
+                  children: [
+                    Text(l10n.navDashboard,
                         style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 24)),
                     SizedBox(height: 4),
-                    Text('City Water Works Overview',
+                    Text(l10n.dashboardOverview,
                         style: TextStyle(color: Colors.white70, fontSize: 12)),
                   ],
                 ),
@@ -402,7 +405,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: const Color(0xFF34D399).withOpacity(0.4)),
                   ),
-                  child: Text('Active · $dateLabel',
+                    child: Text('${l10n.dashboardActive} · $dateLabel',
                       style: const TextStyle(color: Color(0xFF34D399), fontWeight: FontWeight.w600, fontSize: 11)),
                 ),
               ],
@@ -414,25 +417,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
               runSpacing: 10,
               children: [
                 _DashboardKpiCard(
-                  title: 'Total Schemes',
+                  title: l10n.dashboardTotalSchemes,
                   value: _schemeCount.toString(),
                   color: const Color(0xFF60A5FA),
                   icon: Icons.water_drop,
                 ),
                 _DashboardKpiCard(
-                  title: 'Total Sets',
+                  title: l10n.dashboardTotalSets,
                   value: _setCount.toString(),
                   color: const Color(0xFFA78BFA),
                   icon: Icons.settings,
                 ),
                 _DashboardKpiCard(
-                  title: 'Entries / Month',
+                  title: l10n.dashboardEntriesPerMonth,
                   value: _entriesThisMonth.toString(),
                   color: const Color(0xFF34D399),
                   icon: Icons.receipt_long,
                 ),
                 _DashboardKpiCard(
-                  title: 'Amount / Month',
+                  title: l10n.dashboardAmountPerMonth,
                   value: CurrencyUtils.formatAmountShort(_amountThisMonth),
                   color: const Color(0xFFFBBF24),
                   icon: Icons.payments_outlined,
@@ -525,7 +528,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final bars = [1.8, 2.1, 1.9, 2.4, 2.2, 2.8];
     final max = bars.reduce((a, b) => a > b ? a : b);
     return _buildPanelShell(
-      title: 'Monthly Expenditure',
+      title: AppLocalizations.of(context)!.dashboardMonthlyExpenditure,
       child: Column(
         children: [
           SizedBox(
@@ -574,14 +577,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildMachineryPanel() {
     return _buildPanelShell(
-      title: 'Machinery Functional Status',
+      title: AppLocalizations.of(context)!.dashboardMachineryStatus,
       trailing: Wrap(
         spacing: 8,
         children: [
           OutlinedButton.icon(
             onPressed: _isDownloadingReport ? null : _downloadMachineryReport,
             icon: const Icon(Icons.picture_as_pdf, size: 14),
-            label: Text(_isDownloadingReport ? 'Generating...' : 'PDF', style: const TextStyle(fontSize: 11)),
+            label: Text(_isDownloadingReport ? AppLocalizations.of(context)!.dashboardGenerating : 'PDF', style: const TextStyle(fontSize: 11)),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white70,
               side: BorderSide(color: Colors.white.withOpacity(0.2)),
@@ -591,7 +594,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           OutlinedButton.icon(
             onPressed: _isDownloadingAllReport ? null : _downloadAllMachineryReport,
             icon: const Icon(Icons.inventory_2_outlined, size: 14),
-            label: Text(_isDownloadingAllReport ? 'Generating...' : 'Export All Machinery', style: const TextStyle(fontSize: 11)),
+            label: Text(_isDownloadingAllReport ? AppLocalizations.of(context)!.dashboardGenerating : AppLocalizations.of(context)!.dashboardExportAllMachinery, style: const TextStyle(fontSize: 11)),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white70,
               side: BorderSide(color: Colors.white.withOpacity(0.2)),
@@ -627,7 +630,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: Text(type,
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                     ),
-                    Text('$functional/$total Functional',
+                    Text('$functional/$total ${AppLocalizations.of(context)!.dashboardFunctional}',
                         style: TextStyle(color: _typeColor(type), fontWeight: FontWeight.bold)),
                   ],
                 ),
@@ -665,7 +668,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildRecentEntriesPanel() {
     return _buildPanelShell(
-      title: 'Recent Billing Entries',
+      title: AppLocalizations.of(context)!.dashboardRecentBillingEntries,
       child: Column(
         children: _recentEntries.take(5).map((entry) {
           return Container(
@@ -716,7 +719,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : shown.map((s) => s.totalAmount).reduce((a, b) => a > b ? a : b);
 
     return _buildPanelShell(
-      title: 'Schemes',
+      title: AppLocalizations.of(context)!.navSchemes,
       child: Column(
         children: shown.map((scheme) {
           final widthFactor = maxAmount <= 0 ? 0.0 : (scheme.totalAmount / maxAmount).clamp(0.0, 1.0);
@@ -753,7 +756,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text('${scheme.setCount} sets', style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                Text('${scheme.setCount} ${AppLocalizations.of(context)!.dashboardSetsLowercase}', style: const TextStyle(color: Colors.white54, fontSize: 10)),
               ],
             ),
           );
@@ -780,7 +783,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: TextField(
                       controller: _searchController,
                       decoration: InputDecoration(
-                        hintText: 'Search schemes, vouchers, amounts...',
+                        hintText: AppLocalizations.of(context)!.dashboardSearchHint,
                         prefixIcon: const Icon(Icons.search),
                         suffixIcon: _isSearching
                             ? IconButton(
@@ -805,7 +808,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Text(
-                        'Search Results (${_searchResults.length})',
+                        AppLocalizations.of(context)!.dashboardSearchResults(_searchResults.length),
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                     ),
