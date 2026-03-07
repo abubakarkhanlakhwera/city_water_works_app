@@ -3,29 +3,30 @@ import '../../core/database/daos/billing_entries_dao.dart';
 import '../../core/models/billing_entry.dart';
 import '../../shared/widgets/app_text_field.dart';
 import '../../shared/widgets/dd_mm_yyyy_date_picker.dart';
-import '../../shared/widgets/amount_field.dart';
 
-class BillingEntryForm extends StatefulWidget {
+class UselessEntryForm extends StatefulWidget {
   final int machineryId;
-  final BillingEntry? entry; // null for add, non-null for edit
+  final BillingEntry? entry;
 
-  const BillingEntryForm({super.key, required this.machineryId, this.entry});
+  const UselessEntryForm({super.key, required this.machineryId, this.entry});
 
   @override
-  State<BillingEntryForm> createState() => _BillingEntryFormState();
+  State<UselessEntryForm> createState() => _UselessEntryFormState();
 }
 
-class _BillingEntryFormState extends State<BillingEntryForm> {
+class _UselessEntryFormState extends State<UselessEntryForm> {
   final _formKey = GlobalKey<FormState>();
   final _dao = BillingEntriesDao();
 
   late TextEditingController _serialNoCtrl;
   late TextEditingController _dateCtrl;
-  late TextEditingController _voucherCtrl;
-  late TextEditingController _amountCtrl;
   late TextEditingController _regPageCtrl;
-  late TextEditingController _notesCtrl;
+  late TextEditingController _submittedToStoreDateCtrl;
+  late TextEditingController _transferDateCtrl;
+  late TextEditingController _transferredToSchemeCtrl;
+  late TextEditingController _remarksCtrl;
 
+  bool _isDisabled = true;
   bool _isSaving = false;
   bool get _isEdit => widget.entry != null;
 
@@ -34,37 +35,36 @@ class _BillingEntryFormState extends State<BillingEntryForm> {
     super.initState();
     _serialNoCtrl = TextEditingController();
     _dateCtrl = TextEditingController();
-    _voucherCtrl = TextEditingController();
-    _amountCtrl = TextEditingController();
     _regPageCtrl = TextEditingController();
-    _notesCtrl = TextEditingController();
+    _submittedToStoreDateCtrl = TextEditingController();
+    _transferDateCtrl = TextEditingController();
+    _transferredToSchemeCtrl = TextEditingController();
+    _remarksCtrl = TextEditingController();
 
     if (_isEdit) {
       final e = widget.entry!;
       _serialNoCtrl.text = e.serialNo.toString();
       _dateCtrl.text = e.entryDate;
-      _voucherCtrl.text = e.voucherNo?.toString() ?? '';
-      _amountCtrl.text = e.amount.toStringAsFixed(0);
       _regPageCtrl.text = e.regPageNo ?? '';
-      _notesCtrl.text = e.notes ?? '';
+      _isDisabled = e.isDisabled;
+      _submittedToStoreDateCtrl.text = e.submittedToStoreDate ?? '';
+      _transferDateCtrl.text = e.transferDate ?? '';
+      _transferredToSchemeCtrl.text = e.transferredToScheme ?? '';
+      _remarksCtrl.text = e.remarks ?? e.notes ?? '';
     } else {
       _loadDefaults();
     }
   }
 
+  String _todayDDMMYYYY() {
+    final now = DateTime.now();
+    return '${now.day.toString().padLeft(2, '0')}-${now.month.toString().padLeft(2, '0')}-${now.year}';
+  }
+
   Future<void> _loadDefaults() async {
     final nextSn = await _dao.getNextSerialNo(widget.machineryId);
     _serialNoCtrl.text = nextSn.toString();
-
-    final now = DateTime.now();
-    _dateCtrl.text =
-        '${now.day.toString().padLeft(2, '0')}-${now.month.toString().padLeft(2, '0')}-${now.year}';
-
-    final lastVoucher = await _dao.getLastVoucherNo(widget.machineryId);
-    if (lastVoucher != null) {
-      _voucherCtrl.text = (lastVoucher + 1).toString();
-    }
-
+    _dateCtrl.text = _todayDDMMYYYY();
     if (mounted) setState(() {});
   }
 
@@ -72,10 +72,11 @@ class _BillingEntryFormState extends State<BillingEntryForm> {
   void dispose() {
     _serialNoCtrl.dispose();
     _dateCtrl.dispose();
-    _voucherCtrl.dispose();
-    _amountCtrl.dispose();
     _regPageCtrl.dispose();
-    _notesCtrl.dispose();
+    _submittedToStoreDateCtrl.dispose();
+    _transferDateCtrl.dispose();
+    _transferredToSchemeCtrl.dispose();
+    _remarksCtrl.dispose();
     super.dispose();
   }
 
@@ -84,62 +85,41 @@ class _BillingEntryFormState extends State<BillingEntryForm> {
     setState(() => _isSaving = true);
 
     try {
-      final amount = double.tryParse(_amountCtrl.text.replaceAll(',', '')) ?? 0;
-      final voucherNo = int.tryParse(_voucherCtrl.text.trim());
-      final serialNo = int.tryParse(_serialNoCtrl.text) ?? 1;
+      final serialNo = int.tryParse(_serialNoCtrl.text.trim()) ?? 1;
+      final entryDate = _dateCtrl.text.trim().isEmpty ? _todayDDMMYYYY() : _dateCtrl.text.trim();
 
       if (_isEdit) {
         await _dao.updateEntry(widget.entry!.copyWith(
           serialNo: serialNo,
-          entryDate: _dateCtrl.text.trim(),
-          voucherNo: voucherNo,
-          amount: amount,
+          entryDate: entryDate,
+          voucherNo: null,
+          amount: 0,
           regPageNo: _regPageCtrl.text.trim().isEmpty ? null : _regPageCtrl.text.trim(),
-          notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-          remarks: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-          isDisabled: false,
-          submittedToStoreDate: null,
-          transferDate: null,
-          transferredToScheme: null,
+          isDisabled: _isDisabled,
+          submittedToStoreDate:
+              _submittedToStoreDateCtrl.text.trim().isEmpty ? null : _submittedToStoreDateCtrl.text.trim(),
+          transferDate: _transferDateCtrl.text.trim().isEmpty ? null : _transferDateCtrl.text.trim(),
+          transferredToScheme:
+              _transferredToSchemeCtrl.text.trim().isEmpty ? null : _transferredToSchemeCtrl.text.trim(),
+          remarks: _remarksCtrl.text.trim().isEmpty ? null : _remarksCtrl.text.trim(),
+          notes: _remarksCtrl.text.trim().isEmpty ? null : _remarksCtrl.text.trim(),
         ));
       } else {
-        if (voucherNo != null) {
-          final isDup = await _dao.checkDuplicate(
-            widget.machineryId,
-            _dateCtrl.text.trim(),
-            voucherNo,
-            amount,
-          );
-          if (isDup && mounted) {
-            final proceed = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('Possible Duplicate'),
-                content: const Text(
-                    'An entry with the same date, voucher number and amount already exists. Add anyway?'),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                  ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add Anyway')),
-                ],
-              ),
-            );
-            if (proceed != true) {
-              setState(() => _isSaving = false);
-              return;
-            }
-          }
-        }
-
         await _dao.insertEntry(BillingEntry(
           machineryId: widget.machineryId,
           serialNo: serialNo,
-          entryDate: _dateCtrl.text.trim(),
-          voucherNo: voucherNo,
-          amount: amount,
+          entryDate: entryDate,
+          voucherNo: null,
+          amount: 0,
           regPageNo: _regPageCtrl.text.trim().isEmpty ? null : _regPageCtrl.text.trim(),
-          notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-          remarks: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-          isDisabled: false,
+          isDisabled: _isDisabled,
+          submittedToStoreDate:
+              _submittedToStoreDateCtrl.text.trim().isEmpty ? null : _submittedToStoreDateCtrl.text.trim(),
+          transferDate: _transferDateCtrl.text.trim().isEmpty ? null : _transferDateCtrl.text.trim(),
+          transferredToScheme:
+              _transferredToSchemeCtrl.text.trim().isEmpty ? null : _transferredToSchemeCtrl.text.trim(),
+          remarks: _remarksCtrl.text.trim().isEmpty ? null : _remarksCtrl.text.trim(),
+          notes: _remarksCtrl.text.trim().isEmpty ? null : _remarksCtrl.text.trim(),
         ));
       }
 
@@ -173,7 +153,7 @@ class _BillingEntryFormState extends State<BillingEntryForm> {
                 children: [
                   Expanded(
                     child: Text(
-                      _isEdit ? 'Edit Entry' : 'Add Entry',
+                      _isEdit ? 'Edit Useless Entry' : 'Add Entry',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
@@ -193,11 +173,6 @@ class _BillingEntryFormState extends State<BillingEntryForm> {
                       controller: _serialNoCtrl,
                       label: 'Sr. No.',
                       keyboardType: TextInputType.number,
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Required';
-                        if (int.tryParse(v) == null) return 'Invalid';
-                        return null;
-                      },
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -206,41 +181,20 @@ class _BillingEntryFormState extends State<BillingEntryForm> {
                     child: DDMMYYYYDatePicker(
                       controller: _dateCtrl,
                       label: 'Date (DD-MM-YYYY)',
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Required';
-                        return null;
-                      },
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
 
-              Row(
-                children: [
-                  Expanded(
-                    child: AppTextField(
-                      controller: _voucherCtrl,
-                      label: 'Voucher No.',
-                      keyboardType: TextInputType.number,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: AmountField(
-                      controller: _amountCtrl,
-                      label: 'Amount (PKR)',
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Required';
-                        final num = double.tryParse(v.replaceAll(',', ''));
-                        if (num == null || num < 0) return 'Invalid amount';
-                        return null;
-                      },
-                    ),
-                  ),
-                ],
+              SwitchListTile(
+                value: _isDisabled,
+                onChanged: (value) => setState(() => _isDisabled = value),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Item Disabled / Scheme Closed'),
+                subtitle: const Text('Mark this entry as disabled/closed movement record'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
 
               AppTextField(
                 controller: _regPageCtrl,
@@ -248,9 +202,27 @@ class _BillingEntryFormState extends State<BillingEntryForm> {
               ),
               const SizedBox(height: 12),
 
+              DDMMYYYYDatePicker(
+                controller: _submittedToStoreDateCtrl,
+                label: 'Submitted To Store Date (DD-MM-YYYY)',
+              ),
+              const SizedBox(height: 12),
+
+              DDMMYYYYDatePicker(
+                controller: _transferDateCtrl,
+                label: 'Transfer Date (DD-MM-YYYY)',
+              ),
+              const SizedBox(height: 12),
+
               AppTextField(
-                controller: _notesCtrl,
-                label: 'Notes (optional)',
+                controller: _transferredToSchemeCtrl,
+                label: 'Transferred To Scheme Name',
+              ),
+              const SizedBox(height: 12),
+
+              AppTextField(
+                controller: _remarksCtrl,
+                label: 'Remarks (optional)',
                 maxLines: 2,
               ),
               const SizedBox(height: 20),

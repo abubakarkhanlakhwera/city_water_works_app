@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../core/database/daos/settings_dao.dart';
 import '../../core/database/daos/miscellaneous_dao.dart';
-import '../../shared/theme/app_colors.dart';
 
 class MiscellaneousScreen extends StatefulWidget {
   const MiscellaneousScreen({super.key});
@@ -291,221 +290,113 @@ class _MiscRecordDetailScreenState extends State<_MiscRecordDetailScreen> {
   }
 
   Future<void> _showEntryDialog({_MiscEntry? existing}) async {
-    final formKey = GlobalKey<FormState>();
-    final serialNoCtrl = TextEditingController();
-    final dateCtrl = TextEditingController();
-    final locationCtrl = TextEditingController();
-    final sizeCtrl = TextEditingController();
-    final voucherCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
+    final voucherCtrl = TextEditingController();
     final regPageCtrl = TextEditingController();
     final noteCtrl = TextEditingController();
+    final dateCtrl = TextEditingController();
 
     var category = existing?.category ?? _record.category;
     var selectedDate = existing != null ? _parseDate(existing.entryDate) : DateTime.now();
-    final nextSerialNo = existing?.serialNo ?? (_record.entries.length + 1);
 
-    serialNoCtrl.text = nextSerialNo.toString();
-    dateCtrl.text = existing?.entryDate ?? _formatDate(selectedDate);
-    locationCtrl.text = existing?.location ?? '';
-    sizeCtrl.text = existing?.size ?? '';
-    voucherCtrl.text = existing?.voucherNo ?? '';
     amountCtrl.text = existing != null ? existing.amount.toStringAsFixed(0) : '';
+    voucherCtrl.text = existing?.voucherNo ?? '';
     regPageCtrl.text = existing?.regPageNo ?? '';
     noteCtrl.text = existing?.notes ?? '';
+    dateCtrl.text = existing?.entryDate ?? _formatDate(selectedDate);
 
     final entry = await showDialog<_MiscEntry>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setLocalState) => Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
-            child: Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-                left: 16,
-                right: 16,
-                top: 16,
-              ),
-              child: SingleChildScrollView(
-                child: Form(
-                  key: formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Header
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              existing == null ? 'Add Expenditure' : 'Edit Expenditure',
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            icon: const Icon(Icons.close),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Row: Sr. No. + Date
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 1,
-                            child: TextFormField(
-                              controller: serialNoCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(labelText: 'Sr. No.'),
-                              validator: (v) {
-                                if (v == null || v.isEmpty) return 'Required';
-                                if (int.tryParse(v) == null) return 'Invalid';
-                                return null;
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            flex: 2,
-                            child: TextFormField(
-                              readOnly: true,
-                              controller: dateCtrl,
-                              decoration: InputDecoration(
-                                labelText: 'Date (DD-MM-YYYY)',
-                                prefixIcon: const Icon(Icons.calendar_today),
-                                suffixIcon: IconButton(
-                                  icon: const Icon(Icons.date_range),
-                                  onPressed: () async {
-                                    final picked = await showDatePicker(
-                                      context: context,
-                                      initialDate: selectedDate,
-                                      firstDate: DateTime(2000),
-                                      lastDate: DateTime(2100),
-                                    );
-                                    if (picked == null) return;
-                                    setLocalState(() {
-                                      selectedDate = picked;
-                                      dateCtrl.text = _formatDate(picked);
-                                    });
-                                  },
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Location
-                      TextFormField(
-                        controller: locationCtrl,
-                        decoration: const InputDecoration(labelText: 'Location'),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Category
-                      DropdownButtonFormField<String>(
-                        value: category,
-                        decoration: const InputDecoration(labelText: 'Category'),
-                        items: widget.categoryOptions
-                            .map((t) => DropdownMenuItem(value: t, child: Text(t)))
-                            .toList(),
-                        onChanged: (v) {
-                          if (v != null) setLocalState(() => category = v);
-                        },
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Size
-                      TextFormField(
-                        controller: sizeCtrl,
-                        decoration: const InputDecoration(labelText: 'Size (optional)'),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Row: Voucher No. + Amount
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: voucherCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(labelText: 'Voucher No.'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextFormField(
-                              controller: amountCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: const InputDecoration(
-                                labelText: 'Amount (PKR)',
-                                prefixText: 'Rs. ',
-                              ),
-                              validator: (v) {
-                                if (v == null || v.isEmpty) return 'Required';
-                                if (double.tryParse(v) == null) return 'Invalid';
-                                return null;
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Register Page No.
-                      TextFormField(
-                        controller: regPageCtrl,
-                        decoration: const InputDecoration(labelText: 'Register Page No.'),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Notes
-                      TextFormField(
-                        controller: noteCtrl,
-                        decoration: const InputDecoration(labelText: 'Notes (optional)'),
-                        maxLines: 2,
-                      ),
-                      const SizedBox(height: 20),
-
-                      // Full-width submit button
-                      SizedBox(
-                        height: 48,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            if (!formKey.currentState!.validate()) return;
-                            final amount = double.tryParse(amountCtrl.text.trim());
-                            if (amount == null || amount <= 0) return;
-                            Navigator.pop(
-                              ctx,
-                              _MiscEntry(
-                                id: existing?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
-                                serialNo: int.tryParse(serialNoCtrl.text.trim()) ?? nextSerialNo,
-                                category: category,
-                                entryDate: dateCtrl.text.trim().isEmpty ? _formatDate(selectedDate) : dateCtrl.text.trim(),
-                                location: locationCtrl.text.trim().isEmpty ? null : locationCtrl.text.trim(),
-                                size: sizeCtrl.text.trim().isEmpty ? null : sizeCtrl.text.trim(),
-                                voucherNo: voucherCtrl.text.trim().isEmpty ? null : voucherCtrl.text.trim(),
-                                amount: amount,
-                                regPageNo: regPageCtrl.text.trim().isEmpty ? null : regPageCtrl.text.trim(),
-                                notes: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
-                              ),
-                            );
-                          },
-                          child: Text(existing == null ? 'Add Entry' : 'Save'),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
+        builder: (context, setLocalState) => AlertDialog(
+          title: Text(existing == null ? 'Add Expenditure' : 'Edit Expenditure'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  readOnly: true,
+                  controller: dateCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Date (DD-MM-YYYY)',
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.calendar_today),
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDate,
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                        );
+                        if (picked == null) return;
+                        setLocalState(() {
+                          selectedDate = picked;
+                          dateCtrl.text = _formatDate(picked);
+                        });
+                      },
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: category,
+                  decoration: const InputDecoration(labelText: 'Category'),
+                  items: widget.categoryOptions
+                      .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) {
+                      setLocalState(() => category = v);
+                    }
+                  },
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: voucherCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Voucher No. (optional)'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Amount *'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: regPageCtrl,
+                  decoration: const InputDecoration(labelText: 'Reg. Page No. (optional)'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: noteCtrl,
+                  decoration: const InputDecoration(labelText: 'Notes (optional)'),
+                ),
+              ],
             ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                final amount = double.tryParse(amountCtrl.text.trim());
+                if (amount == null || amount <= 0) return;
+                Navigator.pop(
+                  ctx,
+                  _MiscEntry(
+                    id: existing?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+                    category: category,
+                    entryDate: dateCtrl.text.trim().isEmpty ? _formatDate(selectedDate) : dateCtrl.text.trim(),
+                    voucherNo: voucherCtrl.text.trim().isEmpty ? null : voucherCtrl.text.trim(),
+                    amount: amount,
+                    regPageNo: regPageCtrl.text.trim().isEmpty ? null : regPageCtrl.text.trim(),
+                    notes: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+                  ),
+                );
+              },
+              child: Text(existing == null ? 'Add' : 'Save'),
+            ),
+          ],
         ),
       ),
     );
@@ -540,36 +431,6 @@ class _MiscRecordDetailScreenState extends State<_MiscRecordDetailScreen> {
     return false;
   }
 
-  Widget _getCategoryIcon(String category) {
-    IconData icon;
-    Color color;
-    switch (category.toLowerCase()) {
-      case 'starter':
-        icon = Icons.electric_bolt;
-        color = Colors.amber;
-        break;
-      case 'leakage':
-        icon = Icons.water_drop;
-        color = Colors.blue;
-        break;
-      case 'pipes':
-        icon = Icons.plumbing;
-        color = Colors.teal;
-        break;
-      case 'electrical':
-        icon = Icons.electrical_services;
-        color = Colors.orange;
-        break;
-      default:
-        icon = Icons.build_circle;
-        color = AppColors.primary;
-    }
-    return CircleAvatar(
-      backgroundColor: color.withOpacity(0.15),
-      child: Icon(icon, color: color, size: 20),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -581,102 +442,89 @@ class _MiscRecordDetailScreenState extends State<_MiscRecordDetailScreen> {
             onPressed: _saveAndClose,
           ),
           title: Text(_record.title),
+          actions: [
+            IconButton(
+              onPressed: _saveAndClose,
+              icon: const Icon(Icons.check),
+              tooltip: 'Save',
+            ),
+          ],
         ),
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Card(
-              margin: const EdgeInsets.only(bottom: 16),
-              child: ExpansionTile(
-                initiallyExpanded: true,
-                leading: _getCategoryIcon(_record.category),
-                title: Text(
-                  _record.title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                ),
-                subtitle: Text(
-                  '${_record.entries.length} entries · Total: Rs. ${_record.totalAmount.toStringAsFixed(0)}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_record.entries.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Text(
-                        'No expenditures yet. Tap + to add.',
-                        style: TextStyle(color: AppColors.textSecondary),
-                      ),
-                    )
-                  else
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: DataTable(
-                        columnSpacing: 16,
-                        headingRowColor: WidgetStateProperty.all(AppColors.primary.withOpacity(0.05)),
-                        columns: const [
-                          DataColumn(label: Text('Sr.No', style: TextStyle(fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('Date', style: TextStyle(fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('Location', style: TextStyle(fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('Category', style: TextStyle(fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('Size', style: TextStyle(fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('Voucher No.', style: TextStyle(fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('Amount (PKR)', style: TextStyle(fontWeight: FontWeight.bold)), numeric: true),
-                          DataColumn(label: Text('Reg. Page No.', style: TextStyle(fontWeight: FontWeight.bold))),
-                          DataColumn(label: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold))),
-                        ],
-                        rows: _record.entries.asMap().entries.map((entry) {
-                          final idx = entry.key;
-                          final row = entry.value;
-                          return DataRow(
-                            cells: [
-                              DataCell(Text('${row.serialNo > 0 ? row.serialNo : idx + 1}')),
-                              DataCell(Text(row.entryDate)),
-                              DataCell(Text(row.location ?? '-')),
-                              DataCell(Text(row.category)),
-                              DataCell(Text(row.size ?? '-')),
-                              DataCell(Text(row.voucherNo ?? '-')),
-                              DataCell(Text('Rs. ${row.amount.toStringAsFixed(0)}')),
-                              DataCell(Text(row.regPageNo ?? '-')),
-                              DataCell(
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit, size: 18, color: AppColors.primary),
-                                      onPressed: () => _showEntryDialog(existing: row),
-                                      tooltip: 'Edit',
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete, size: 18, color: AppColors.error),
-                                      onPressed: () => _deleteEntry(row.id),
-                                      tooltip: 'Delete',
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  // Add Entry button — centered, matching scheme page style
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: OutlinedButton.icon(
-                      onPressed: () => _showEntryDialog(),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Add Entry'),
-                    ),
-                  ),
+                  Text('Category: ${_record.category}'),
+                  const SizedBox(height: 4),
+                  Text('Total: Rs. ${_record.totalAmount.toStringAsFixed(0)}'),
                 ],
               ),
             ),
-            const SizedBox(height: 80),
+          ),
+          const SizedBox(height: 10),
+          if (_record.entries.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 18),
+              child: Center(child: Text('No expenditures yet. Tap + to add.')),
+            )
+          else
+            Card(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Expanded(child: Center(child: Text('Sr.No')))),
+                    DataColumn(label: Expanded(child: Center(child: Text('Date')))),
+                    DataColumn(label: Expanded(child: Center(child: Text('Voucher No.')))),
+                    DataColumn(label: Expanded(child: Center(child: Text('Amount (PKR)')))),
+                    DataColumn(label: Expanded(child: Center(child: Text('Reg. Page No.')))),
+                    DataColumn(label: Expanded(child: Center(child: Text('Actions')))),
+                  ],
+                  rows: _record.entries.asMap().entries.map((entry) {
+                    final idx = entry.key;
+                    final row = entry.value;
+                    return DataRow(
+                      cells: [
+                        DataCell(Center(child: Text('${idx + 1}'))),
+                        DataCell(Center(child: Text(row.entryDate))),
+                        DataCell(Center(child: Text(row.voucherNo ?? '-'))),
+                        DataCell(Center(child: Text('PKR ${row.amount.toStringAsFixed(0)}'))),
+                        DataCell(Center(child: Text(row.regPageNo ?? '-'))),
+                        DataCell(
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, size: 18),
+                                onPressed: () => _showEntryDialog(existing: row),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, size: 18),
+                                onPressed: () => _deleteEntry(row.id),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.center,
+            child: OutlinedButton.icon(
+              onPressed: () => _showEntryDialog(),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Entry'),
+            ),
+          ),
           ],
         ),
       ),
@@ -737,11 +585,8 @@ class _MiscRecord {
 
 class _MiscEntry {
   final String id;
-  final int serialNo;
   final String category;
   final String entryDate;
-  final String? location;
-  final String? size;
   final String? voucherNo;
   final double amount;
   final String? regPageNo;
@@ -749,11 +594,8 @@ class _MiscEntry {
 
   _MiscEntry({
     required this.id,
-    required this.serialNo,
     required this.category,
     required this.entryDate,
-    this.location,
-    this.size,
     this.voucherNo,
     required this.amount,
     this.regPageNo,
@@ -762,11 +604,8 @@ class _MiscEntry {
 
   _MiscEntry copyWith({
     String? id,
-    int? serialNo,
     String? category,
     String? entryDate,
-    String? location,
-    String? size,
     String? voucherNo,
     double? amount,
     String? regPageNo,
@@ -774,11 +613,8 @@ class _MiscEntry {
   }) {
     return _MiscEntry(
       id: id ?? this.id,
-      serialNo: serialNo ?? this.serialNo,
       category: category ?? this.category,
       entryDate: entryDate ?? this.entryDate,
-      location: location ?? this.location,
-      size: size ?? this.size,
       voucherNo: voucherNo ?? this.voucherNo,
       amount: amount ?? this.amount,
       regPageNo: regPageNo ?? this.regPageNo,
@@ -788,11 +624,8 @@ class _MiscEntry {
 
   Map<String, dynamic> toJson() => {
         'id': id,
-        'serialNo': serialNo,
         'category': category,
         'entryDate': entryDate,
-        'location': location,
-        'size': size,
         'voucherNo': voucherNo,
         'amount': amount,
         'regPageNo': regPageNo,
@@ -802,11 +635,8 @@ class _MiscEntry {
   factory _MiscEntry.fromJson(Map<String, dynamic> json) {
     return _MiscEntry(
       id: (json['id'] ?? '').toString(),
-      serialNo: int.tryParse((json['serialNo'] ?? 0).toString()) ?? 0,
       category: (json['category'] ?? 'Miscellaneous').toString(),
       entryDate: (json['entryDate'] ?? '').toString(),
-      location: json['location']?.toString(),
-      size: json['size']?.toString(),
       voucherNo: json['voucherNo']?.toString(),
       amount: double.tryParse((json['amount'] ?? 0).toString()) ?? 0,
       regPageNo: json['regPageNo']?.toString(),

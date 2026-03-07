@@ -5,8 +5,9 @@ import '../../shared/theme/app_colors.dart';
 
 class SchemeForm extends StatefulWidget {
   final Scheme? scheme;
+  final String schemeCategory;
 
-  const SchemeForm({super.key, this.scheme});
+  const SchemeForm({super.key, this.scheme, this.schemeCategory = 'scheme'});
 
   @override
   State<SchemeForm> createState() => _SchemeFormState();
@@ -47,6 +48,7 @@ class _SchemeFormState extends State<SchemeForm> {
             '${now.day.toString().padLeft(2, '0')}-${now.month.toString().padLeft(2, '0')}-${now.year} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
         await _schemesDao.insertScheme(Scheme(
           schemeName: _nameController.text.trim(),
+          category: widget.schemeCategory,
           description: _descController.text.trim().isNotEmpty ? _descController.text.trim() : null,
           createdAt: nowStr,
           updatedAt: nowStr,

@@ -10,6 +10,10 @@ class SchemesDao {
   }
 
   Future<List<Scheme>> getAllSchemes() async {
+    return getSchemesByCategory('scheme');
+  }
+
+  Future<List<Scheme>> getSchemesByCategory(String category) async {
     final db = await _db.database;
     final result = await db.rawQuery('''
       SELECT s.*,
@@ -20,8 +24,9 @@ class SchemesDao {
          JOIN sets st ON st.set_id = m.set_id
          WHERE st.scheme_id = s.scheme_id) as total_amount
       FROM schemes s
+      WHERE LOWER(s.category) = LOWER(?)
       ORDER BY s.scheme_name ASC
-    ''');
+    ''', [category]);
     return result.map((r) => Scheme.fromMap(r)).toList();
   }
 
@@ -43,11 +48,15 @@ class SchemesDao {
   }
 
   Future<Scheme?> getSchemeByName(String name) async {
+    return getSchemeByNameAndCategory(name, 'scheme');
+  }
+
+  Future<Scheme?> getSchemeByNameAndCategory(String name, String category) async {
     final db = await _db.database;
     final result = await db.query(
       'schemes',
-      where: 'scheme_name = ?',
-      whereArgs: [name],
+      where: 'scheme_name = ? AND LOWER(category) = LOWER(?)',
+      whereArgs: [name, category],
     );
     if (result.isEmpty) return null;
     return Scheme.fromMap(result.first);
@@ -58,6 +67,7 @@ class SchemesDao {
     final now = _now();
     return await db.insert('schemes', {
       'scheme_name': scheme.schemeName,
+      'category': scheme.category,
       'description': scheme.description,
       'created_at': now,
       'updated_at': now,
@@ -70,6 +80,7 @@ class SchemesDao {
       'schemes',
       {
         'scheme_name': scheme.schemeName,
+        'category': scheme.category,
         'description': scheme.description,
         'updated_at': _now(),
       },
@@ -84,8 +95,15 @@ class SchemesDao {
   }
 
   Future<int> getSchemeCount() async {
+    return getSchemeCountByCategory('scheme');
+  }
+
+  Future<int> getSchemeCountByCategory(String category) async {
     final db = await _db.database;
-    final result = await db.rawQuery('SELECT COUNT(*) as cnt FROM schemes');
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as cnt FROM schemes WHERE LOWER(category) = LOWER(?)',
+      [category],
+    );
     return result.first['cnt'] as int;
   }
 }

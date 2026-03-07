@@ -7,7 +7,20 @@ import 'scheme_detail_screen.dart';
 import 'scheme_form.dart';
 
 class SchemesListScreen extends StatefulWidget {
-  const SchemesListScreen({super.key});
+  final String title;
+  final String schemeCategory;
+  final String emptyStateTitle;
+  final String emptyStateSubtitle;
+  final String addButtonLabel;
+
+  const SchemesListScreen({
+    super.key,
+    this.title = 'Schemes',
+    this.schemeCategory = 'scheme',
+    this.emptyStateTitle = 'No schemes yet',
+    this.emptyStateSubtitle = 'Add a scheme or import from Excel',
+    this.addButtonLabel = 'Add Scheme',
+  });
 
   @override
   State<SchemesListScreen> createState() => _SchemesListScreenState();
@@ -27,7 +40,7 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
   Future<void> _loadSchemes() async {
     setState(() => _isLoading = true);
     try {
-      final schemes = await _schemesDao.getAllSchemes();
+      final schemes = await _schemesDao.getSchemesByCategory(widget.schemeCategory);
       if (mounted) {
         setState(() {
           _schemes = schemes;
@@ -51,7 +64,7 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
         insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
-          child: SchemeForm(),
+          child: SchemeForm(schemeCategory: widget.schemeCategory),
         ),
       ),
     );
@@ -107,7 +120,7 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
     final isCompact = MediaQuery.of(context).size.width < 600;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Schemes'),
+        title: Text(widget.title),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -125,19 +138,19 @@ class _SchemesListScreenState extends State<SchemesListScreen> {
                       Icon(Icons.water_drop_outlined, size: 80, color: AppColors.textHint),
                       const SizedBox(height: 16),
                       Text(
-                        'No schemes yet',
+                        widget.emptyStateTitle,
                         style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: AppColors.textSecondary),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Add a scheme or import from Excel',
+                        widget.emptyStateSubtitle,
                         style: TextStyle(color: AppColors.textSecondary),
                       ),
                       const SizedBox(height: 24),
                       ElevatedButton.icon(
                         onPressed: _addScheme,
                         icon: const Icon(Icons.add),
-                        label: const Text('Add Scheme'),
+                        label: Text(widget.addButtonLabel),
                       ),
                     ],
                   ),

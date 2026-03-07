@@ -6,6 +6,11 @@ class BillingEntry {
   final int? voucherNo;
   final double amount;
   final String? regPageNo;
+  final bool isDisabled;
+  final String? submittedToStoreDate;
+  final String? transferDate;
+  final String? transferredToScheme;
+  final String? remarks;
   final String? notes;
   final String createdAt;
   final String updatedAt;
@@ -23,6 +28,11 @@ class BillingEntry {
     this.voucherNo,
     required this.amount,
     this.regPageNo,
+    this.isDisabled = false,
+    this.submittedToStoreDate,
+    this.transferDate,
+    this.transferredToScheme,
+    this.remarks,
     this.notes,
     this.createdAt = '',
     this.updatedAt = '',
@@ -40,6 +50,11 @@ class BillingEntry {
       'voucher_no': voucherNo,
       'amount': amount,
       'reg_page_no': regPageNo,
+      'is_disabled': isDisabled ? 1 : 0,
+      'submitted_to_store_date': submittedToStoreDate,
+      'transfer_date': transferDate,
+      'transferred_to_scheme': transferredToScheme,
+      'remarks': remarks,
       'notes': notes,
       'created_at': createdAt,
       'updated_at': updatedAt,
@@ -55,6 +70,11 @@ class BillingEntry {
       voucherNo: map['voucher_no'] as int?,
       amount: (map['amount'] as num).toDouble(),
       regPageNo: map['reg_page_no'] as String?,
+      isDisabled: ((map['is_disabled'] as num?)?.toInt() ?? 0) == 1,
+      submittedToStoreDate: map['submitted_to_store_date'] as String?,
+      transferDate: map['transfer_date'] as String?,
+      transferredToScheme: map['transferred_to_scheme'] as String?,
+      remarks: map['remarks'] as String? ?? map['notes'] as String?,
       notes: map['notes'] as String?,
       createdAt: map['created_at'] as String? ?? '',
       updatedAt: map['updated_at'] as String? ?? '',
@@ -72,6 +92,11 @@ class BillingEntry {
     int? voucherNo,
     double? amount,
     String? regPageNo,
+    bool? isDisabled,
+    String? submittedToStoreDate,
+    String? transferDate,
+    String? transferredToScheme,
+    String? remarks,
     String? notes,
     String? createdAt,
     String? updatedAt,
@@ -84,6 +109,11 @@ class BillingEntry {
       voucherNo: voucherNo ?? this.voucherNo,
       amount: amount ?? this.amount,
       regPageNo: regPageNo ?? this.regPageNo,
+      isDisabled: isDisabled ?? this.isDisabled,
+      submittedToStoreDate: submittedToStoreDate ?? this.submittedToStoreDate,
+      transferDate: transferDate ?? this.transferDate,
+      transferredToScheme: transferredToScheme ?? this.transferredToScheme,
+      remarks: remarks ?? this.remarks,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

@@ -13,6 +13,7 @@ import 'features/import/import_screen.dart';
 import 'features/export/export_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/miscellaneous/miscellaneous_screen.dart';
+import 'features/useless_items/useless_items_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -166,6 +167,7 @@ class _AppShellState extends State<AppShell> {
   final List<_NavItem> _navItems = [
     _NavItem(icon: Icons.dashboard, label: 'Dashboard'),
     _NavItem(icon: Icons.business, label: 'Schemes'),
+    _NavItem(icon: Icons.delete_sweep_outlined, label: 'Useless Items'),
     _NavItem(icon: Icons.category_outlined, label: 'Miscellaneous'),
     _NavItem(icon: Icons.upload_file, label: 'Import'),
     _NavItem(icon: Icons.download, label: 'Export'),
@@ -177,18 +179,20 @@ class _AppShellState extends State<AppShell> {
       case 0:
         return DashboardScreen(
           onNavigateToSchemes: () => setState(() => _selectedIndex = 1),
-          onNavigateToImport: () => setState(() => _selectedIndex = 3),
-          onNavigateToExport: () => setState(() => _selectedIndex = 4),
+          onNavigateToImport: () => setState(() => _selectedIndex = 4),
+          onNavigateToExport: () => setState(() => _selectedIndex = 5),
         );
       case 1:
         return const SchemesListScreen();
       case 2:
-        return const MiscellaneousScreen();
+        return const UselessItemsScreen();
       case 3:
-        return const ImportScreen();
+        return const MiscellaneousScreen();
       case 4:
-        return const ExportScreen();
+        return const ImportScreen();
       case 5:
+        return const ExportScreen();
+      case 6:
         return SettingsScreen(
           onThemeChanged: () => CityWaterWorksApp.of(context)?.toggleTheme(),
           currentUsername: widget.currentUsername,

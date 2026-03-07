@@ -44,6 +44,11 @@ class BillingEntriesDao {
       'voucher_no': entry.voucherNo,
       'amount': entry.amount,
       'reg_page_no': entry.regPageNo,
+      'is_disabled': entry.isDisabled ? 1 : 0,
+      'submitted_to_store_date': entry.submittedToStoreDate,
+      'transfer_date': entry.transferDate,
+      'transferred_to_scheme': entry.transferredToScheme,
+      'remarks': entry.remarks,
       'notes': entry.notes,
       'created_at': now,
       'updated_at': now,
@@ -60,6 +65,11 @@ class BillingEntriesDao {
         'voucher_no': entry.voucherNo,
         'amount': entry.amount,
         'reg_page_no': entry.regPageNo,
+        'is_disabled': entry.isDisabled ? 1 : 0,
+        'submitted_to_store_date': entry.submittedToStoreDate,
+        'transfer_date': entry.transferDate,
+        'transferred_to_scheme': entry.transferredToScheme,
+        'remarks': entry.remarks,
         'notes': entry.notes,
         'updated_at': _now(),
       },
@@ -123,10 +133,20 @@ class BillingEntriesDao {
       JOIN schemes s ON s.scheme_id = st.scheme_id
       WHERE be.voucher_no LIKE ? OR be.amount LIKE ? OR be.entry_date LIKE ?
         OR s.scheme_name LIKE ? OR st.set_label LIKE ? OR m.display_label LIKE ?
-        OR be.reg_page_no LIKE ?
+        OR be.reg_page_no LIKE ? OR be.transferred_to_scheme LIKE ? OR be.remarks LIKE ?
       ORDER BY be.entry_id DESC
       LIMIT 50
-    ''', ['%$query%', '%$query%', '%$query%', '%$query%', '%$query%', '%$query%', '%$query%']);
+    ''', [
+      '%$query%',
+      '%$query%',
+      '%$query%',
+      '%$query%',
+      '%$query%',
+      '%$query%',
+      '%$query%',
+      '%$query%',
+      '%$query%',
+    ]);
     return result.map((r) => BillingEntry.fromMap(r)).toList();
   }
 

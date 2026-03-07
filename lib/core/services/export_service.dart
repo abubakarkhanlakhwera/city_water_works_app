@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'package:archive/archive.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:excel/excel.dart' as xl;
@@ -19,35 +18,6 @@ class ExportService {
   final SetsDao _setsDao = SetsDao();
   final MachineryDao _machineryDao = MachineryDao();
   final BillingEntriesDao _entriesDao = BillingEntriesDao();
-
-  /// Removes UTF-8 BOM (\xEF\xBB\xBF) from XML files inside the xlsx ZIP.
-  /// The excel Dart package writes a BOM into sharedStrings.xml which causes
-  /// cell A1 to display as "ï»¿Title" when opened in Google Sheets / Android apps.
-  Uint8List _fixExcelBom(List<int> xlsxBytes) {
-    try {
-      final input = xlsxBytes is Uint8List ? xlsxBytes : Uint8List.fromList(xlsxBytes);
-      final archive = ZipDecoder().decodeBytes(input);
-      var modified = false;
-      for (int i = 0; i < archive.files.length; i++) {
-        final f = archive.files[i];
-        if (!f.isFile || !f.name.endsWith('.xml')) continue;
-        final content = f.content as List<int>;
-        if (content.length >= 3 &&
-            content[0] == 0xEF &&
-            content[1] == 0xBB &&
-            content[2] == 0xBF) {
-          final stripped = content.sublist(3);
-          archive.files[i] = ArchiveFile(f.name, stripped.length, stripped);
-          modified = true;
-        }
-      }
-      if (!modified) return input;
-      final encoded = ZipEncoder().encode(archive);
-      return encoded != null ? Uint8List.fromList(encoded) : input;
-    } catch (_) {
-      return xlsxBytes is Uint8List ? xlsxBytes : Uint8List.fromList(xlsxBytes);
-    }
-  }
   final MiscellaneousDao _miscDao = MiscellaneousDao();
 
   String _formatAmount(double amount) {
@@ -1081,6 +1051,7 @@ class ExportService {
   Future<String> exportSchemeToExcel(int schemeId) async {
     final scheme = await _schemesDao.getSchemeById(schemeId);
     if (scheme == null) throw Exception('Scheme not found');
+    final isUselessScheme = scheme.category.toLowerCase() == 'useless_item';
 
     final sets = await _setsDao.getSetsForScheme(schemeId);
     final excel = xl.Excel.createExcel();
@@ -1104,8 +1075,18 @@ class ExportService {
         sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset, rowIndex: 1)).value =
             xl.TextCellValue(machinery.displayLabel);
 
-        // Row 2: Column headers
-        final headers = ['Sr.No', 'Date', 'Voucher No.', 'Amount', 'Reg. Page No.'];
+        final headers = isUselessScheme
+            ? [
+                'Sr.No',
+                'Date',
+                'Reg. Page No.',
+                'Disabled/Closed',
+                'Submitted To Store Date',
+                'Transfer Date',
+                'Transferred To Scheme',
+                'Remarks',
+              ]
+            : ['Sr.No', 'Date', 'Voucher No.', 'Amount', 'Reg. Page No.'];
         for (int h = 0; h < headers.length; h++) {
           final cell = sheet.cell(xl.CellIndex.indexByColumnRow(
               columnIndex: machColOffset + h, rowIndex: 2));
@@ -1121,19 +1102,38 @@ class ExportService {
         final entries = await _entriesDao.getEntriesForMachinery(machinery.machineryId!);
         for (int i = 0; i < entries.length; i++) {
           final e = entries[i];
+          if (isUselessScheme) {
           sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset, rowIndex: 3 + i)).value =
-              xl.IntCellValue(e.serialNo);
+            xl.IntCellValue(e.serialNo);
           sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 1, rowIndex: 3 + i)).value =
-              xl.TextCellValue(e.entryDate);
+            xl.TextCellValue(e.entryDate);
           sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 2, rowIndex: 3 + i)).value =
-              e.voucherNo != null ? xl.IntCellValue(e.voucherNo!) : xl.TextCellValue('');
+            xl.TextCellValue(e.regPageNo ?? '');
           sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 3, rowIndex: 3 + i)).value =
-              xl.DoubleCellValue(e.amount);
+            xl.TextCellValue(e.isDisabled ? 'Yes' : 'No');
           sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 4, rowIndex: 3 + i)).value =
-              xl.TextCellValue(e.regPageNo ?? '');
+            xl.TextCellValue(e.submittedToStoreDate ?? '');
+          sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 5, rowIndex: 3 + i)).value =
+            xl.TextCellValue(e.transferDate ?? '');
+          sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 6, rowIndex: 3 + i)).value =
+            xl.TextCellValue(e.transferredToScheme ?? '');
+          sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 7, rowIndex: 3 + i)).value =
+            xl.TextCellValue(e.remarks ?? e.notes ?? '');
+          } else {
+          sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset, rowIndex: 3 + i)).value =
+            xl.IntCellValue(e.serialNo);
+          sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 1, rowIndex: 3 + i)).value =
+            xl.TextCellValue(e.entryDate);
+          sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 2, rowIndex: 3 + i)).value =
+            e.voucherNo != null ? xl.IntCellValue(e.voucherNo!) : xl.TextCellValue('');
+          sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 3, rowIndex: 3 + i)).value =
+            xl.DoubleCellValue(e.amount);
+          sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 4, rowIndex: 3 + i)).value =
+            xl.TextCellValue(e.regPageNo ?? '');
+          }
         }
 
-        machColOffset += 6; // 5 columns + 1 gap
+        machColOffset += headers.length + 1;
       }
       colOffset = machColOffset + 1; // gap between sets
     }
@@ -1146,7 +1146,7 @@ class ExportService {
     final dir = await getApplicationDocumentsDirectory();
     final filename = '${scheme.schemeName.replaceAll(RegExp(r'[^\w\s]'), '_')}_Export.xlsx';
     final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(_fixExcelBom(excel.encode()!));
+    await file.writeAsBytes(excel.encode()!);
     return file.path;
   }
 
@@ -1155,6 +1155,7 @@ class ExportService {
     if (setModel == null) throw Exception('Set not found');
 
     final scheme = await _schemesDao.getSchemeById(setModel.schemeId);
+    final isUselessScheme = (scheme?.category ?? '').toLowerCase() == 'useless_item';
     final excel = xl.Excel.createExcel();
     final baseName = '${scheme?.schemeName ?? 'Scheme'} ${setModel.setLabel}';
     final sheetName = baseName.length > 31 ? baseName.substring(0, 31) : baseName;
@@ -1169,7 +1170,18 @@ class ExportService {
       sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset, rowIndex: 1)).value =
           xl.TextCellValue(machinery.displayLabel);
 
-      final headers = ['Sr.No', 'Date', 'Voucher No.', 'Amount', 'Reg. Page No.'];
+      final headers = isUselessScheme
+          ? [
+              'Sr.No',
+              'Date',
+              'Reg. Page No.',
+              'Disabled/Closed',
+              'Submitted To Store Date',
+              'Transfer Date',
+              'Transferred To Scheme',
+              'Remarks',
+            ]
+          : ['Sr.No', 'Date', 'Voucher No.', 'Amount', 'Reg. Page No.'];
       for (int h = 0; h < headers.length; h++) {
         final cell =
             sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + h, rowIndex: 2));
@@ -1184,24 +1196,51 @@ class ExportService {
       final entries = await _entriesDao.getEntriesForMachinery(machinery.machineryId!);
       for (int i = 0; i < entries.length; i++) {
         final e = entries[i];
-        sheet
+        if (isUselessScheme) {
+          sheet
             .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset, rowIndex: 3 + i))
             .value = xl.IntCellValue(e.serialNo);
-        sheet
+          sheet
             .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 1, rowIndex: 3 + i))
             .value = xl.TextCellValue(e.entryDate);
-        sheet
+          sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 2, rowIndex: 3 + i))
+            .value = xl.TextCellValue(e.regPageNo ?? '');
+          sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 3, rowIndex: 3 + i))
+            .value = xl.TextCellValue(e.isDisabled ? 'Yes' : 'No');
+          sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 4, rowIndex: 3 + i))
+            .value = xl.TextCellValue(e.submittedToStoreDate ?? '');
+          sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 5, rowIndex: 3 + i))
+            .value = xl.TextCellValue(e.transferDate ?? '');
+          sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 6, rowIndex: 3 + i))
+            .value = xl.TextCellValue(e.transferredToScheme ?? '');
+          sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 7, rowIndex: 3 + i))
+            .value = xl.TextCellValue(e.remarks ?? e.notes ?? '');
+        } else {
+          sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset, rowIndex: 3 + i))
+            .value = xl.IntCellValue(e.serialNo);
+          sheet
+            .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 1, rowIndex: 3 + i))
+            .value = xl.TextCellValue(e.entryDate);
+          sheet
             .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 2, rowIndex: 3 + i))
             .value = e.voucherNo != null ? xl.IntCellValue(e.voucherNo!) : xl.TextCellValue('');
-        sheet
+          sheet
             .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 3, rowIndex: 3 + i))
             .value = xl.DoubleCellValue(e.amount);
-        sheet
+          sheet
             .cell(xl.CellIndex.indexByColumnRow(columnIndex: machColOffset + 4, rowIndex: 3 + i))
             .value = xl.TextCellValue(e.regPageNo ?? '');
+        }
       }
 
-      machColOffset += 6;
+        machColOffset += headers.length + 1;
     }
 
     if (excel.tables.containsKey('Sheet1')) {
@@ -1211,7 +1250,7 @@ class ExportService {
     final dir = await getApplicationDocumentsDirectory();
     final filename = '${baseName.replaceAll(RegExp(r'[^\\w\\s]'), '_')}_Export.xlsx';
     final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(_fixExcelBom(excel.encode()!));
+    await file.writeAsBytes(excel.encode()!);
     return file.path;
   }
 
@@ -1220,6 +1259,7 @@ class ExportService {
     if (setModel == null) throw Exception('Set not found');
 
     final scheme = await _schemesDao.getSchemeById(setModel.schemeId);
+    final isUselessScheme = (scheme?.category ?? '').toLowerCase() == 'useless_item';
     final machineryList = await _machineryDao.getMachineryForSet(setId);
     final machinery = machineryList.where((m) => m.machineryId == machineryId).firstOrNull;
     if (machinery == null) throw Exception('Selected machinery not found');
@@ -1235,7 +1275,18 @@ class ExportService {
     sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1)).value =
         xl.TextCellValue(machinery.displayLabel);
 
-    final headers = ['Sr.No', 'Date', 'Voucher No.', 'Amount', 'Reg. Page No.'];
+    final headers = isUselessScheme
+        ? [
+            'Sr.No',
+            'Date',
+            'Reg. Page No.',
+            'Disabled/Closed',
+            'Submitted To Store Date',
+            'Transfer Date',
+            'Transferred To Scheme',
+            'Remarks',
+          ]
+        : ['Sr.No', 'Date', 'Voucher No.', 'Amount', 'Reg. Page No.'];
     for (int h = 0; h < headers.length; h++) {
       final cell = sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: h, rowIndex: 2));
       cell.value = xl.TextCellValue(headers[h]);
@@ -1249,16 +1300,35 @@ class ExportService {
     final entries = await _entriesDao.getEntriesForMachinery(machinery.machineryId!);
     for (int i = 0; i < entries.length; i++) {
       final e = entries[i];
+      if (isUselessScheme) {
       sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 3 + i)).value =
-          xl.IntCellValue(e.serialNo);
+        xl.IntCellValue(e.serialNo);
       sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 3 + i)).value =
-          xl.TextCellValue(e.entryDate);
+        xl.TextCellValue(e.entryDate);
       sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 3 + i)).value =
-          e.voucherNo != null ? xl.IntCellValue(e.voucherNo!) : xl.TextCellValue('');
+        xl.TextCellValue(e.regPageNo ?? '');
       sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: 3 + i)).value =
-          xl.DoubleCellValue(e.amount);
+        xl.TextCellValue(e.isDisabled ? 'Yes' : 'No');
       sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: 3 + i)).value =
-          xl.TextCellValue(e.regPageNo ?? '');
+        xl.TextCellValue(e.submittedToStoreDate ?? '');
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: 3 + i)).value =
+        xl.TextCellValue(e.transferDate ?? '');
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: 3 + i)).value =
+        xl.TextCellValue(e.transferredToScheme ?? '');
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: 3 + i)).value =
+        xl.TextCellValue(e.remarks ?? e.notes ?? '');
+      } else {
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 3 + i)).value =
+        xl.IntCellValue(e.serialNo);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 3 + i)).value =
+        xl.TextCellValue(e.entryDate);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: 3 + i)).value =
+        e.voucherNo != null ? xl.IntCellValue(e.voucherNo!) : xl.TextCellValue('');
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: 3 + i)).value =
+        xl.DoubleCellValue(e.amount);
+      sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: 3 + i)).value =
+        xl.TextCellValue(e.regPageNo ?? '');
+      }
     }
 
     if (excel.tables.containsKey('Sheet1')) {
@@ -1268,7 +1338,7 @@ class ExportService {
     final dir = await getApplicationDocumentsDirectory();
     final filename = '${baseName.replaceAll(RegExp(r'[^\\w\\s]'), '_')}_${machinery.machineryType}_Export.xlsx';
     final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(_fixExcelBom(excel.encode()!));
+    await file.writeAsBytes(excel.encode()!);
     return file.path;
   }
 
@@ -1277,13 +1347,20 @@ class ExportService {
   Future<String> exportSchemeToCsv(int schemeId) async {
     final scheme = await _schemesDao.getSchemeById(schemeId);
     if (scheme == null) throw Exception('Scheme not found');
+    final isUselessScheme = scheme.category.toLowerCase() == 'useless_item';
 
     final sets = await _setsDao.getSetsForScheme(schemeId);
 
     final buffer = StringBuffer();
     // BOM for Excel UTF-8 compatibility
     buffer.write('\uFEFF');
-    buffer.writeln('Scheme,Set,Machinery Type,Specs,Sr.No,Date,Voucher No.,Amount,Reg. Page No.,Notes');
+    if (isUselessScheme) {
+      buffer.writeln(
+        'Scheme,Set,Machinery Type,Specs,Sr.No,Date,Reg. Page No.,Disabled/Closed,Submitted To Store Date,Transfer Date,Transferred To Scheme,Remarks',
+      );
+    } else {
+      buffer.writeln('Scheme,Set,Machinery Type,Specs,Sr.No,Date,Voucher No.,Amount,Reg. Page No.,Notes');
+    }
 
     for (final setModel in sets) {
       final machineryList = await _machineryDao.getMachineryForSet(setModel.setId!);
@@ -1292,9 +1369,15 @@ class ExportService {
         final entries = await _entriesDao.getEntriesForMachinery(machinery.machineryId!);
 
         for (final e in entries) {
-          buffer.writeln(
-            '"${scheme.schemeName}","${setModel.setLabel}","${machinery.machineryType}","${machinery.displayLabel}",${e.serialNo},"${e.entryDate}",${e.voucherNo ?? ''},${e.amount},"${e.regPageNo ?? ''}","${e.notes ?? ''}"',
-          );
+          if (isUselessScheme) {
+            buffer.writeln(
+              '"${scheme.schemeName}","${setModel.setLabel}","${machinery.machineryType}","${machinery.displayLabel}",${e.serialNo},"${e.entryDate}","${e.regPageNo ?? ''}","${e.isDisabled ? 'Yes' : 'No'}","${e.submittedToStoreDate ?? ''}","${e.transferDate ?? ''}","${e.transferredToScheme ?? ''}","${e.remarks ?? e.notes ?? ''}"',
+            );
+          } else {
+            buffer.writeln(
+              '"${scheme.schemeName}","${setModel.setLabel}","${machinery.machineryType}","${machinery.displayLabel}",${e.serialNo},"${e.entryDate}",${e.voucherNo ?? ''},${e.amount},"${e.regPageNo ?? ''}","${e.notes ?? ''}"',
+            );
+          }
         }
       }
     }
@@ -1310,18 +1393,31 @@ class ExportService {
     final setModel = await _setsDao.getSetById(setId);
     if (setModel == null) throw Exception('Set not found');
     final scheme = await _schemesDao.getSchemeById(setModel.schemeId);
+    final isUselessScheme = (scheme?.category ?? '').toLowerCase() == 'useless_item';
     final machineryList = await _machineryDao.getMachineryForSet(setId);
 
     final buffer = StringBuffer();
     buffer.write('\uFEFF');
-    buffer.writeln('Scheme,Set,Machinery Type,Specs,Sr.No,Date,Voucher No.,Amount,Reg. Page No.,Notes');
+    if (isUselessScheme) {
+      buffer.writeln(
+        'Scheme,Set,Machinery Type,Specs,Sr.No,Date,Reg. Page No.,Disabled/Closed,Submitted To Store Date,Transfer Date,Transferred To Scheme,Remarks',
+      );
+    } else {
+      buffer.writeln('Scheme,Set,Machinery Type,Specs,Sr.No,Date,Voucher No.,Amount,Reg. Page No.,Notes');
+    }
 
     for (final machinery in machineryList) {
       final entries = await _entriesDao.getEntriesForMachinery(machinery.machineryId!);
       for (final e in entries) {
-        buffer.writeln(
-          '"${scheme?.schemeName ?? ''}","${setModel.setLabel}","${machinery.machineryType}","${machinery.displayLabel}",${e.serialNo},"${e.entryDate}",${e.voucherNo ?? ''},${e.amount},"${e.regPageNo ?? ''}","${e.notes ?? ''}"',
-        );
+        if (isUselessScheme) {
+          buffer.writeln(
+            '"${scheme?.schemeName ?? ''}","${setModel.setLabel}","${machinery.machineryType}","${machinery.displayLabel}",${e.serialNo},"${e.entryDate}","${e.regPageNo ?? ''}","${e.isDisabled ? 'Yes' : 'No'}","${e.submittedToStoreDate ?? ''}","${e.transferDate ?? ''}","${e.transferredToScheme ?? ''}","${e.remarks ?? e.notes ?? ''}"',
+          );
+        } else {
+          buffer.writeln(
+            '"${scheme?.schemeName ?? ''}","${setModel.setLabel}","${machinery.machineryType}","${machinery.displayLabel}",${e.serialNo},"${e.entryDate}",${e.voucherNo ?? ''},${e.amount},"${e.regPageNo ?? ''}","${e.notes ?? ''}"',
+          );
+        }
       }
     }
 
@@ -1337,6 +1433,7 @@ class ExportService {
     final setModel = await _setsDao.getSetById(setId);
     if (setModel == null) throw Exception('Set not found');
     final scheme = await _schemesDao.getSchemeById(setModel.schemeId);
+    final isUselessScheme = (scheme?.category ?? '').toLowerCase() == 'useless_item';
 
     final machineryList = await _machineryDao.getMachineryForSet(setId);
     final machinery = machineryList.where((m) => m.machineryId == machineryId).firstOrNull;
@@ -1344,13 +1441,25 @@ class ExportService {
 
     final buffer = StringBuffer();
     buffer.write('\uFEFF');
-    buffer.writeln('Scheme,Set,Machinery Type,Specs,Sr.No,Date,Voucher No.,Amount,Reg. Page No.,Notes');
+    if (isUselessScheme) {
+      buffer.writeln(
+        'Scheme,Set,Machinery Type,Specs,Sr.No,Date,Reg. Page No.,Disabled/Closed,Submitted To Store Date,Transfer Date,Transferred To Scheme,Remarks',
+      );
+    } else {
+      buffer.writeln('Scheme,Set,Machinery Type,Specs,Sr.No,Date,Voucher No.,Amount,Reg. Page No.,Notes');
+    }
 
     final entries = await _entriesDao.getEntriesForMachinery(machinery.machineryId!);
     for (final e in entries) {
-      buffer.writeln(
-        '"${scheme?.schemeName ?? ''}","${setModel.setLabel}","${machinery.machineryType}","${machinery.displayLabel}",${e.serialNo},"${e.entryDate}",${e.voucherNo ?? ''},${e.amount},"${e.regPageNo ?? ''}","${e.notes ?? ''}"',
-      );
+      if (isUselessScheme) {
+        buffer.writeln(
+          '"${scheme?.schemeName ?? ''}","${setModel.setLabel}","${machinery.machineryType}","${machinery.displayLabel}",${e.serialNo},"${e.entryDate}","${e.regPageNo ?? ''}","${e.isDisabled ? 'Yes' : 'No'}","${e.submittedToStoreDate ?? ''}","${e.transferDate ?? ''}","${e.transferredToScheme ?? ''}","${e.remarks ?? e.notes ?? ''}"',
+        );
+      } else {
+        buffer.writeln(
+          '"${scheme?.schemeName ?? ''}","${setModel.setLabel}","${machinery.machineryType}","${machinery.displayLabel}",${e.serialNo},"${e.entryDate}",${e.voucherNo ?? ''},${e.amount},"${e.regPageNo ?? ''}","${e.notes ?? ''}"',
+        );
+      }
     }
 
     final dir = await getApplicationDocumentsDirectory();
@@ -1407,7 +1516,7 @@ class ExportService {
           ...records.map((record) {
             final rows = record.entries.isEmpty
                 ? [
-                    ['-', '-', '-', '-', '-', '-']
+                    ['-', '-', '-', '-', '-']
                   ]
                 : record.entries
                     .asMap()
@@ -1415,7 +1524,6 @@ class ExportService {
                     .map((entry) => [
                           '${entry.key + 1}',
                           entry.value.entryDate,
-                          entry.value.location ?? '-',
                           entry.value.voucherNo ?? '-',
                           _formatAmount(entry.value.amount),
                           entry.value.regPageNo ?? '-',
@@ -1440,7 +1548,7 @@ class ExportService {
                   cellStyle: const pw.TextStyle(fontSize: 8),
                   cellAlignment: pw.Alignment.center,
                   headerAlignment: pw.Alignment.center,
-                  headers: const ['Sr.No', 'Date', 'Location', 'Voucher No.', 'Amount (PKR)', 'Reg. Page No.'],
+                  headers: const ['Sr.No', 'Date', 'Voucher No.', 'Amount (PKR)', 'Reg. Page No.'],
                   data: rows,
                 ),
                 pw.SizedBox(height: 10),
@@ -1505,7 +1613,7 @@ class ExportService {
     final dir = await getApplicationDocumentsDirectory();
     final filename = 'Miscellaneous_Export.xlsx';
     final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(_fixExcelBom(excel.encode()!));
+    await file.writeAsBytes(excel.encode()!);
     return file.path;
   }
 
@@ -1583,16 +1691,12 @@ class _MiscRecordExport {
 
 class _MiscEntryExport {
   final String entryDate;
-  final String? location;
-  final String? size;
   final String? voucherNo;
   final double amount;
   final String? regPageNo;
 
   _MiscEntryExport({
     required this.entryDate,
-    this.location,
-    this.size,
     this.voucherNo,
     required this.amount,
     this.regPageNo,
@@ -1601,8 +1705,6 @@ class _MiscEntryExport {
   factory _MiscEntryExport.fromJson(Map<String, dynamic> json) {
     return _MiscEntryExport(
       entryDate: (json['entryDate'] ?? '').toString(),
-      location: json['location']?.toString(),
-      size: json['size']?.toString(),
       voucherNo: json['voucherNo']?.toString(),
       amount: double.tryParse((json['amount'] ?? 0).toString()) ?? 0,
       regPageNo: json['regPageNo']?.toString(),

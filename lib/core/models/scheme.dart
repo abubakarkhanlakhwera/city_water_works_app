@@ -1,6 +1,7 @@
 class Scheme {
   final int? schemeId;
   final String schemeName;
+  final String category;
   final String? description;
   final String createdAt;
   final String updatedAt;
@@ -12,6 +13,7 @@ class Scheme {
   Scheme({
     this.schemeId,
     required this.schemeName,
+    this.category = 'scheme',
     this.description,
     required this.createdAt,
     required this.updatedAt,
@@ -23,6 +25,7 @@ class Scheme {
     return {
       if (schemeId != null) 'scheme_id': schemeId,
       'scheme_name': schemeName,
+      'category': category,
       'description': description,
       'created_at': createdAt,
       'updated_at': updatedAt,
@@ -33,6 +36,7 @@ class Scheme {
     return Scheme(
       schemeId: map['scheme_id'] as int?,
       schemeName: map['scheme_name'] as String,
+      category: (map['category'] as String?) ?? 'scheme',
       description: map['description'] as String?,
       createdAt: map['created_at'] as String? ?? '',
       updatedAt: map['updated_at'] as String? ?? '',
@@ -44,6 +48,7 @@ class Scheme {
   Scheme copyWith({
     int? schemeId,
     String? schemeName,
+    String? category,
     String? description,
     String? createdAt,
     String? updatedAt,
@@ -53,6 +58,7 @@ class Scheme {
     return Scheme(
       schemeId: schemeId ?? this.schemeId,
       schemeName: schemeName ?? this.schemeName,
+      category: category ?? this.category,
       description: description ?? this.description,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

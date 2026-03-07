@@ -10,6 +10,7 @@ import '../../core/models/billing_entry.dart';
 import '../../shared/theme/app_colors.dart';
 import '../../shared/utils/currency_utils.dart';
 import '../entries/billing_entry_form.dart';
+import '../entries/useless_entry_form.dart';
 import '../machinery/machinery_form.dart';
 
 class SetDetailScreen extends StatefulWidget {
@@ -31,6 +32,8 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
   Scheme? _scheme;
   List<_MachineryWithEntries> _machineryList = [];
   bool _isLoading = true;
+
+  bool get _isUselessItemFlow => (_scheme?.category ?? '').toLowerCase() == 'useless_item';
 
   @override
   void initState() {
@@ -117,7 +120,9 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
         insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 640),
-          child: BillingEntryForm(machineryId: machineryId),
+          child: _isUselessItemFlow
+              ? UselessEntryForm(machineryId: machineryId)
+              : BillingEntryForm(machineryId: machineryId),
         ),
       ),
     );
@@ -131,7 +136,9 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
         insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 640),
-          child: BillingEntryForm(machineryId: entry.machineryId, entry: entry),
+          child: _isUselessItemFlow
+              ? UselessEntryForm(machineryId: entry.machineryId, entry: entry)
+              : BillingEntryForm(machineryId: entry.machineryId, entry: entry),
         ),
       ),
     );
@@ -305,6 +312,7 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
     final machinery = mw.machinery;
     final entries = mw.entries;
     final totalAmount = entries.fold(0.0, (sum, e) => sum + e.amount);
+    final isUseless = _isUselessItemFlow;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -341,24 +349,41 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
               child: DataTable(
                 columnSpacing: 16,
                 headingRowColor: WidgetStateProperty.all(AppColors.primary.withOpacity(0.05)),
-                columns: const [
+                columns: [
                   DataColumn(label: Text('Sr.No', style: TextStyle(fontWeight: FontWeight.bold))),
                   DataColumn(label: Text('Date', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(label: Text('Voucher No.', style: TextStyle(fontWeight: FontWeight.bold))),
-                  DataColumn(
-                    label: Text('Amount (PKR)', style: TextStyle(fontWeight: FontWeight.bold)),
-                    numeric: true,
-                  ),
+                  if (!isUseless)
+                    DataColumn(label: Text('Voucher No.', style: TextStyle(fontWeight: FontWeight.bold))),
+                  if (!isUseless)
+                    DataColumn(
+                      label: Text('Amount (PKR)', style: TextStyle(fontWeight: FontWeight.bold)),
+                      numeric: true,
+                    ),
                   DataColumn(label: Text('Reg. Page No.', style: TextStyle(fontWeight: FontWeight.bold))),
+                  if (isUseless)
+                    DataColumn(label: Text('Disabled/Closed', style: TextStyle(fontWeight: FontWeight.bold))),
+                  if (isUseless)
+                    DataColumn(label: Text('Submitted To Store', style: TextStyle(fontWeight: FontWeight.bold))),
+                  if (isUseless)
+                    DataColumn(label: Text('Transfer Date', style: TextStyle(fontWeight: FontWeight.bold))),
+                  if (isUseless)
+                    DataColumn(label: Text('Transferred To Scheme', style: TextStyle(fontWeight: FontWeight.bold))),
+                  if (isUseless)
+                    DataColumn(label: Text('Remarks', style: TextStyle(fontWeight: FontWeight.bold))),
                   DataColumn(label: Text('Actions', style: TextStyle(fontWeight: FontWeight.bold))),
                 ],
                 rows: entries.map((e) => DataRow(
                   cells: [
                     DataCell(Text('${e.serialNo}')),
                     DataCell(Text(e.entryDate)),
-                    DataCell(Text(e.voucherNo?.toString() ?? '-')),
-                    DataCell(Text(CurrencyUtils.formatAmount(e.amount))),
+                    if (!isUseless) DataCell(Text(e.voucherNo?.toString() ?? '-')),
+                    if (!isUseless) DataCell(Text(CurrencyUtils.formatAmount(e.amount))),
                     DataCell(Text(e.regPageNo ?? '-')),
+                    if (isUseless) DataCell(Text(e.isDisabled ? 'Yes' : 'No')),
+                    if (isUseless) DataCell(Text(e.submittedToStoreDate ?? '-')),
+                    if (isUseless) DataCell(Text(e.transferDate ?? '-')),
+                    if (isUseless) DataCell(Text(e.transferredToScheme ?? '-')),
+                    if (isUseless) DataCell(Text(e.remarks ?? e.notes ?? '-')),
                     DataCell(Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -412,6 +437,10 @@ class _SetDetailScreenState extends State<SetDetailScreen> {
       case 'transformer':
         icon = Icons.transform;
         color = Colors.orange;
+        break;
+      case 'electrical items':
+        icon = Icons.electrical_services;
+        color = Colors.deepPurple;
         break;
       case 'turbine':
         icon = Icons.wind_power;

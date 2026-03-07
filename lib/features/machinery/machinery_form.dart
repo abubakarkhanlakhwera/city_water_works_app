@@ -137,6 +137,18 @@ class _MachineryFormState extends State<MachineryForm> {
         ],
       ),
       MachineryType(
+        typeName: 'Electrical Items',
+        attributes: [
+          MachineryAttribute(
+            name: 'Item Name',
+            inputType: 'dropdown',
+            options: ['Cable', 'Breaker', 'Switch', 'Panel'],
+            required: true,
+          ),
+          MachineryAttribute(name: 'Specification', inputType: 'text', required: false),
+        ],
+      ),
+      MachineryType(
         typeName: 'Turbine',
         attributes: [
           MachineryAttribute(name: 'Model', inputType: 'text', required: false),

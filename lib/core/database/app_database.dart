@@ -26,7 +26,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 5,
+      version: 8,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
       onConfigure: (db) async {
@@ -40,6 +40,7 @@ class AppDatabase {
       CREATE TABLE schemes (
         scheme_id INTEGER PRIMARY KEY AUTOINCREMENT,
         scheme_name TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'scheme',
         description TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -78,6 +79,11 @@ class AppDatabase {
         voucher_no INTEGER,
         amount REAL NOT NULL,
         reg_page_no TEXT,
+        is_disabled INTEGER NOT NULL DEFAULT 0,
+        submitted_to_store_date TEXT,
+        transfer_date TEXT,
+        transferred_to_scheme TEXT,
+        remarks TEXT,
         notes TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -140,6 +146,13 @@ class AppDatabase {
       'type_name': 'Transformer',
       'attributes':
           '[{"name":"kVA Rating","input_type":"dropdown","options":["25kVA","50kVA","100kVA","200kVA"],"required":true},{"name":"Brand","input_type":"text","options":[],"required":false}]',
+      'created_at': now,
+    });
+
+    await db.insert('machinery_types', {
+      'type_name': 'Electrical Items',
+      'attributes':
+          '[{"name":"Item Name","input_type":"dropdown","options":["Cable","Breaker","Switch","Panel"],"required":true},{"name":"Specification","input_type":"text","options":[],"required":false}]',
       'created_at': now,
     });
 
@@ -230,6 +243,25 @@ class AppDatabase {
     if (oldVersion < 5) {
       await _createMiscTables(db);
       await _migrateMiscFromSettings(db);
+    }
+
+    if (oldVersion < 6) {
+      await db.execute("ALTER TABLE schemes ADD COLUMN category TEXT NOT NULL DEFAULT 'scheme'");
+      await db.execute("UPDATE schemes SET category = 'scheme' WHERE category IS NULL OR TRIM(category) = ''");
+    }
+
+    if (oldVersion < 7) {
+      await db.execute("ALTER TABLE billing_entries ADD COLUMN is_disabled INTEGER NOT NULL DEFAULT 0");
+      await db.execute("ALTER TABLE billing_entries ADD COLUMN submitted_to_store_date TEXT");
+      await db.execute("ALTER TABLE billing_entries ADD COLUMN transferred_to_scheme TEXT");
+      await db.execute("ALTER TABLE billing_entries ADD COLUMN remarks TEXT");
+      await db.execute(
+        "UPDATE billing_entries SET remarks = notes WHERE (remarks IS NULL OR TRIM(remarks) = '') AND notes IS NOT NULL AND TRIM(notes) <> ''",
+      );
+    }
+
+    if (oldVersion < 8) {
+      await db.execute("ALTER TABLE billing_entries ADD COLUMN transfer_date TEXT");
     }
   }
 
