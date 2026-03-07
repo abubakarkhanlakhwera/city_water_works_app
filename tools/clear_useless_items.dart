@@ -9,6 +9,7 @@ Future<void> main(List<String> args) async {
     return;
   }
 
+
   final dbPath = args.first;
   final dbFile = File(dbPath);
   if (!dbFile.existsSync()) {
