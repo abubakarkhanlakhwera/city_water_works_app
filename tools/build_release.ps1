@@ -23,7 +23,11 @@ if ($KillJava) {
 Write-Host 'Stopping Gradle daemons...'
 Push-Location (Join-Path $repoRoot 'android')
 try {
-    .\gradlew.bat --stop | Out-Host
+    try {
+        .\gradlew.bat --stop | Out-Host
+    } catch {
+        Write-Warning 'gradlew --stop failed (JAVA_HOME/PATH may be missing). Continuing...'
+    }
 } finally {
     Pop-Location
 }
@@ -43,7 +47,8 @@ if (-not $SkipClean) {
                 Write-Host "Deleted: $p"
             } catch {
                 Write-Warning "Could not delete $p. Trying cmd rmdir..."
-                cmd /c "rmdir /s /q \"$p\"" | Out-Null
+                $escaped = '"' + $p + '"'
+                cmd /c "rmdir /s /q $escaped" | Out-Null
             }
         }
     }
@@ -56,11 +61,19 @@ Write-Host 'Running flutter pub get...'
 flutter pub get | Out-Host
 
 Write-Host 'Building release APK...'
+$buildStart = Get-Date
 flutter build apk --release | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "flutter build failed with exit code $LASTEXITCODE"
+}
 
 $apkPath = Join-Path $repoRoot 'build\app\outputs\flutter-apk\app-release.apk'
 if (Test-Path $apkPath) {
-    $sizeMb = [math]::Round((Get-Item $apkPath).Length / 1MB, 2)
+    $apk = Get-Item $apkPath
+    if ($apk.LastWriteTime -lt $buildStart) {
+        throw 'APK exists but was not produced in this build run.'
+    }
+    $sizeMb = [math]::Round($apk.Length / 1MB, 2)
     Write-Host "APK built successfully: $apkPath ($sizeMb MB)"
 } else {
     throw 'Build finished but APK was not found at expected path.'
