@@ -464,57 +464,101 @@ class _ExportScreenState extends State<ExportScreen> {
                 // Scope selection
                 Text(l10n.exportScopeTitle, style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
+                if (isCompact) ...[
+                  // Mobile: stack vertically, no icons, compact labels
+                  SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<String>(
+                      showSelectedIcon: false,
+                      segments: [
+                        ButtonSegment(value: 'set', label: Text(l10n.exportScopeSingleSet)),
+                        ButtonSegment(value: 'scheme', label: Text(l10n.exportScopeEntireSchemes)),
+                        ButtonSegment(value: 'miscellaneous', label: Text(l10n.navMiscellaneous)),
+                      ],
+                      selected: {_exportScope},
+                      onSelectionChanged: (v) => setState(() {
+                        _exportScope = v.first;
+                        _selectedSet = null;
+                        _selectedMachinery = null;
+                        _machineryForSet = [];
+                        if (_exportScope == 'miscellaneous') {
+                          _miscExportMode = 'single';
+                          _selectedMiscRecordId = null;
+                        }
+                      }),
+                    ),
+                  ),
+                  if (_exportScope != 'miscellaneous') ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
                       child: SegmentedButton<String>(
+                        showSelectedIcon: false,
                         segments: [
-                          ButtonSegment(value: 'set', label: Text(l10n.exportScopeSingleSet), icon: const Icon(Icons.folder)),
-                          ButtonSegment(
-                            value: 'scheme',
-                            label: Text(l10n.exportScopeEntireSchemes),
-                            icon: const Icon(Icons.business),
-                          ),
-                          ButtonSegment(
-                            value: 'miscellaneous',
-                            label: Text(l10n.navMiscellaneous),
-                            icon: const Icon(Icons.category_outlined),
-                          ),
+                          ButtonSegment(value: 'scheme', label: Text(l10n.navSchemes)),
+                          ButtonSegment(value: 'useless_item', label: Text(l10n.navUselessItems)),
                         ],
-                        selected: {_exportScope},
-                        onSelectionChanged: (v) => setState(() {
-                          _exportScope = v.first;
-                          _selectedSet = null;
-                          _selectedMachinery = null;
-                          _machineryForSet = [];
-                          if (_exportScope == 'miscellaneous') {
-                            _miscExportMode = 'single';
-                            _selectedMiscRecordId = null;
-                          }
-                        }),
+                        selected: {_schemeCategory},
+                        onSelectionChanged: (v) async {
+                          await _reloadSchemesForCategory(v.first);
+                        },
                       ),
                     ),
-                    if (_exportScope != 'miscellaneous') ...[
-                      const SizedBox(width: 12),
+                  ],
+                ] else ...[
+                  // Desktop/tablet: side by side with icons
+                  Row(
+                    children: [
                       Expanded(
                         child: SegmentedButton<String>(
                           segments: [
-                            ButtonSegment(value: 'scheme', label: Text(l10n.navSchemes), icon: const Icon(Icons.business)),
+                            ButtonSegment(value: 'set', label: Text(l10n.exportScopeSingleSet), icon: const Icon(Icons.folder)),
                             ButtonSegment(
-                              value: 'useless_item',
-                              label: Text(l10n.navUselessItems),
-                              icon: const Icon(Icons.delete_sweep_outlined),
+                              value: 'scheme',
+                              label: Text(l10n.exportScopeEntireSchemes),
+                              icon: const Icon(Icons.business),
+                            ),
+                            ButtonSegment(
+                              value: 'miscellaneous',
+                              label: Text(l10n.navMiscellaneous),
+                              icon: const Icon(Icons.category_outlined),
                             ),
                           ],
-                          selected: {_schemeCategory},
-                          onSelectionChanged: (v) async {
-                            await _reloadSchemesForCategory(v.first);
-                          },
+                          selected: {_exportScope},
+                          onSelectionChanged: (v) => setState(() {
+                            _exportScope = v.first;
+                            _selectedSet = null;
+                            _selectedMachinery = null;
+                            _machineryForSet = [];
+                            if (_exportScope == 'miscellaneous') {
+                              _miscExportMode = 'single';
+                              _selectedMiscRecordId = null;
+                            }
+                          }),
                         ),
                       ),
+                      if (_exportScope != 'miscellaneous') ...[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: SegmentedButton<String>(
+                            segments: [
+                              ButtonSegment(value: 'scheme', label: Text(l10n.navSchemes), icon: const Icon(Icons.business)),
+                              ButtonSegment(
+                                value: 'useless_item',
+                                label: Text(l10n.navUselessItems),
+                                icon: const Icon(Icons.delete_sweep_outlined),
+                              ),
+                            ],
+                            selected: {_schemeCategory},
+                            onSelectionChanged: (v) async {
+                              await _reloadSchemesForCategory(v.first);
+                            },
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
+                ],
                 const SizedBox(height: 20),
 
                 // Scheme selector

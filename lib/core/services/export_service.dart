@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:excel/excel.dart' as xl;
@@ -16,6 +17,30 @@ import '../models/machinery.dart';
 class ExportService {
   final SchemesDao _schemesDao = SchemesDao();
   final SetsDao _setsDao = SetsDao();
+
+  // Cached fonts for PDF rendering (supports Latin + Urdu/Arabic)
+  pw.Font? _baseFont;
+  pw.Font? _boldFont;
+  pw.Font? _arabicFont;
+  List<pw.Font>? _fontFallback;
+
+  Future<void> _ensureFontsLoaded() async {
+    if (_baseFont != null) return;
+    final regularData = await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
+    final boldData = await rootBundle.load('assets/fonts/NotoSans-Bold.ttf');
+    final arabicData = await rootBundle.load('assets/fonts/NotoNaskhArabic-Regular.ttf');
+    _baseFont = pw.Font.ttf(regularData);
+    _boldFont = pw.Font.ttf(boldData);
+    _arabicFont = pw.Font.ttf(arabicData);
+    _fontFallback = [_arabicFont!];
+  }
+
+  pw.ThemeData _pdfTheme() {
+    return pw.ThemeData.withFont(
+      base: _baseFont!,
+      bold: _boldFont!,
+    );
+  }
   final MachineryDao _machineryDao = MachineryDao();
   final BillingEntriesDao _entriesDao = BillingEntriesDao();
   final MiscellaneousDao _miscDao = MiscellaneousDao();
@@ -105,6 +130,7 @@ class ExportService {
   }
 
   Future<Uint8List> exportMachineryReportToPdf() async {
+    await _ensureFontsLoaded();
     final machineryList = await _machineryDao.getAllMachineryWithStats();
     final schemeTypeCounts = await _countSchemesByKeyTypes();
 
@@ -137,7 +163,7 @@ class ExportService {
     final totalMachinery = totalByType.values.fold<int>(0, (sum, v) => sum + v);
     final grandTotalAmount = amountByType.values.fold<double>(0.0, (sum, v) => sum + v);
 
-    final pdf = pw.Document();
+    final pdf = pw.Document(theme: _pdfTheme());
     final headerColor = PdfColor.fromHex('#1E3A5F');
 
     pdf.addPage(
@@ -192,9 +218,10 @@ class ExportService {
           pw.SizedBox(height: 12),
           pw.TableHelper.fromTextArray(
             headerStyle: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10),
+                fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 10,
+                fontFallback: _fontFallback ?? []),
             headerDecoration: pw.BoxDecoration(color: headerColor),
-            cellStyle: const pw.TextStyle(fontSize: 9),
+            cellStyle: pw.TextStyle(fontSize: 9, fontFallback: _fontFallback ?? []),
             cellAlignment: pw.Alignment.centerLeft,
             headerAlignment: pw.Alignment.centerLeft,
             headers: const ['Type', 'Functional / Total', 'Total Amount (PKR)', 'Specification Breakdown'],
@@ -244,6 +271,7 @@ class ExportService {
   }
 
   Future<Uint8List> _exportSetToPdfInternal(int setId, {List<Machinery>? machineryOverride}) async {
+    await _ensureFontsLoaded();
     final setModel = await _setsDao.getSetById(setId);
     if (setModel == null) throw Exception('Set not found');
 
@@ -278,13 +306,14 @@ class ExportService {
       machineryBlocks.add(machineryList.sublist(i, end));
     }
 
-    final pdf = pw.Document();
+    final pdf = pw.Document(theme: _pdfTheme());
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.all(18),
         header: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
             pw.Text(
               '${scheme?.schemeName ?? 'Unknown Scheme'} ${setModel.setLabel}',
@@ -455,8 +484,12 @@ class ExportService {
       child: pw.Text(
         text,
         textAlign: align,
+        textDirection: _containsArabic(text) ? pw.TextDirection.rtl : pw.TextDirection.ltr,
         style: pw.TextStyle(
           fontSize: 9,
+          font: bold ? _boldFont : _baseFont,
+          fontBold: _boldFont,
+          fontFallback: _fontFallback ?? [],
           color: background != null ? PdfColors.white : PdfColors.black,
           fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
         ),
@@ -464,13 +497,19 @@ class ExportService {
     );
   }
 
+  static bool _containsArabic(String text) {
+    // Arabic Unicode block: U+0600–U+06FF (covers Arabic, Urdu, Persian)
+    return text.runes.any((r) => r >= 0x0600 && r <= 0x06FF);
+  }
+
   Future<Uint8List> exportSchemeToPdf(int schemeId) async {
+    await _ensureFontsLoaded();
     final scheme = await _schemesDao.getSchemeById(schemeId);
     if (scheme == null) throw Exception('Scheme not found');
     final isUselessScheme = scheme.category.toLowerCase() == 'useless_item';
 
     final sets = await _setsDao.getSetsForScheme(schemeId);
-    final pdf = pw.Document();
+    final pdf = pw.Document(theme: _pdfTheme());
 
     final masterTemplates = <_MachineryTemplate>[];
     if (sets.isNotEmpty) {
@@ -666,10 +705,11 @@ class ExportService {
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.all(18),
         header: (context) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
             pw.Text(
               scheme.schemeName,
+              textAlign: pw.TextAlign.center,
               style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
             ),
             pw.SizedBox(height: 4),
@@ -704,6 +744,7 @@ class ExportService {
   }
 
   Future<Uint8List> exportAllMachineryToPdf() async {
+    await _ensureFontsLoaded();
     final schemes = await _schemesDao.getAllSchemes();
     final schemeTypeCounts = await _countSchemesByKeyTypes();
     final allMachinery = await _machineryDao.getAllMachineryWithStats();
@@ -716,7 +757,7 @@ class ExportService {
     final pumpCount = machineryCountsByType['Pump'] ?? 0;
     final transformerCount = machineryCountsByType['Transformer'] ?? 0;
     final turbineCount = machineryCountsByType['Turbine'] ?? 0;
-    final pdf = pw.Document();
+    final pdf = pw.Document(theme: _pdfTheme());
 
     if (schemes.isEmpty) {
       pdf.addPage(
@@ -724,18 +765,20 @@ class ExportService {
           pageFormat: PdfPageFormat.a4.landscape,
           margin: const pw.EdgeInsets.all(18),
           header: (context) => pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
             children: [
               pw.Text(
                 'Water Supply Scheme History - Complete Machinery Export',
+                textAlign: pw.TextAlign.center,
                 style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
               ),
               pw.SizedBox(height: 4),
               pw.Text(
                 'Total Machinery: Motor $motorCount | Pump $pumpCount | Transformer $transformerCount | Turbine $turbineCount',
+                textAlign: pw.TextAlign.center,
                 style: const pw.TextStyle(fontSize: 10),
               ),
-              pw.Text('Date: ${_nowFormatted()}', style: const pw.TextStyle(fontSize: 10)),
+              pw.Text('Date: ${_nowFormatted()}', textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 10)),
               pw.SizedBox(height: 6),
               pw.Divider(thickness: 1),
             ],
@@ -842,20 +885,22 @@ class ExportService {
             pageFormat: PdfPageFormat.a4.landscape,
             margin: const pw.EdgeInsets.all(18),
             header: (context) => pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
               children: [
                 pw.Text(
                   'Water Supply Scheme History - Complete Machinery Export',
+                  textAlign: pw.TextAlign.center,
                   style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
                 ),
                 pw.SizedBox(height: 4),
                 if (schemeIndex == 0 && context.pageNumber == 1)
                   pw.Text(
                     'Total Machinery: Motor $motorCount | Pump $pumpCount | Transformer $transformerCount | Turbine $turbineCount',
+                    textAlign: pw.TextAlign.center,
                     style: const pw.TextStyle(fontSize: 10),
                   ),
-                pw.Text('Scheme: ${scheme.schemeName}', style: const pw.TextStyle(fontSize: 10)),
-                pw.Text('Date: ${_nowFormatted()}', style: const pw.TextStyle(fontSize: 10)),
+                pw.Text('Scheme: ${scheme.schemeName}', textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 10)),
+                pw.Text('Date: ${_nowFormatted()}', textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 10)),
                 pw.SizedBox(height: 6),
                 pw.Divider(thickness: 1),
               ],
@@ -1048,20 +1093,22 @@ class ExportService {
           pageFormat: PdfPageFormat.a4.landscape,
           margin: const pw.EdgeInsets.all(18),
           header: (context) => pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
             children: [
               pw.Text(
                 'Water Supply Scheme History - Complete Machinery Export',
+                textAlign: pw.TextAlign.center,
                 style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
               ),
               pw.SizedBox(height: 4),
               if (schemeIndex == 0 && setIndex == 0 && context.pageNumber == 1)
                 pw.Text(
                   'Total Machinery: Motor $motorCount | Pump $pumpCount | Transformer $transformerCount | Turbine $turbineCount',
+                  textAlign: pw.TextAlign.center,
                   style: const pw.TextStyle(fontSize: 10),
                 ),
-              pw.Text('Scheme: ${scheme.schemeName}', style: const pw.TextStyle(fontSize: 10)),
-              pw.Text('Date: ${_nowFormatted()}', style: const pw.TextStyle(fontSize: 10)),
+              pw.Text('Scheme: ${scheme.schemeName}', textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 10)),
+              pw.Text('Date: ${_nowFormatted()}', textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 10)),
               pw.SizedBox(height: 6),
               pw.Divider(thickness: 1),
             ],
@@ -1535,12 +1582,13 @@ class ExportService {
   }
 
   Future<Uint8List> exportMiscellaneousToPdf({String? recordId}) async {
+    await _ensureFontsLoaded();
     final records = await _loadMiscRecords(recordId: recordId);
     if (records.isEmpty) {
       throw Exception('No miscellaneous data found to export');
     }
 
-    final pdf = pw.Document();
+    final pdf = pw.Document(theme: _pdfTheme());
     final totalEntries = records.fold<int>(0, (sum, r) => sum + r.entries.length);
     final totalAmount = records.fold<double>(0, (sum, r) => sum + r.totalAmount);
 
@@ -1596,9 +1644,10 @@ class ExportService {
                   ),
                 ),
                 pw.TableHelper.fromTextArray(
-                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
+                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9,
+                      fontFallback: _fontFallback ?? []),
                   headerDecoration: pw.BoxDecoration(color: PdfColor.fromHex('#1E3A5F')),
-                  cellStyle: const pw.TextStyle(fontSize: 8),
+                  cellStyle: pw.TextStyle(fontSize: 8, fontFallback: _fontFallback ?? []),
                   cellAlignment: pw.Alignment.center,
                   headerAlignment: pw.Alignment.center,
                   headers: const ['Sr.No', 'Date', 'Voucher No.', 'Amount (PKR)', 'Reg. Page No.'],
