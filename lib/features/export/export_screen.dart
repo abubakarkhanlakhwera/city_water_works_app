@@ -40,6 +40,7 @@ class _ExportScreenState extends State<ExportScreen> {
   Machinery? _selectedMachinery;
   List<Map<String, String>> _miscRecords = [];
   String _miscExportMode = 'single';
+  String _uselessExportMode = 'single';
   String? _selectedMiscRecordId;
   String _exportFormat = 'pdf';
   String _exportScope = 'set';
@@ -47,6 +48,9 @@ class _ExportScreenState extends State<ExportScreen> {
 
   bool _isLoading = true;
   bool _isExporting = false;
+
+  bool get _isUselessCategoryExport =>
+      _exportScope != 'miscellaneous' && _schemeCategory == 'useless_item';
 
   @override
   void initState() {
@@ -128,6 +132,7 @@ class _ExportScreenState extends State<ExportScreen> {
     if (!mounted) return;
     setState(() {
       _schemeCategory = category;
+      _uselessExportMode = 'single';
       _schemes = schemes;
       _selectedScheme = null;
       _selectedSet = null;
@@ -148,9 +153,23 @@ class _ExportScreenState extends State<ExportScreen> {
 
   Future<void> _export() async {
     final l10n = AppLocalizations.of(context)!;
+    final isUselessCategoryExport = _isUselessCategoryExport;
+
     if (_exportScope != 'miscellaneous' && _selectedScheme == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l10n.exportSelectScheme)),
+      );
+      return;
+    }
+    if (isUselessCategoryExport && _uselessExportMode == 'single' && _selectedSet == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.exportSelectSet)),
+      );
+      return;
+    }
+    if (isUselessCategoryExport && _uselessExportMode == 'single' && _selectedMachinery == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.exportSelectMachineryField)),
       );
       return;
     }
@@ -180,6 +199,15 @@ class _ExportScreenState extends State<ExportScreen> {
             recordId: _miscExportMode == 'single' ? _selectedMiscRecordId : null,
           );
           filename = _buildSuggestedFileName(extension: 'pdf');
+        } else if (isUselessCategoryExport && _uselessExportMode == 'single') {
+          pdfBytes = await _exportService.exportSingleMachineryToPdf(
+            _selectedSet!.setId!,
+            _selectedMachinery!.machineryId!,
+          );
+          filename = _buildSuggestedFileName(extension: 'pdf');
+        } else if (isUselessCategoryExport && _uselessExportMode == 'complete') {
+          pdfBytes = await _exportService.exportSchemeToPdf(_selectedScheme!.schemeId!);
+          filename = _buildSuggestedFileName(extension: 'pdf');
         } else if (_exportScope == 'set' && _selectedSet != null && _selectedMachinery != null) {
           pdfBytes = await _exportService.exportSingleMachineryToPdf(
             _selectedSet!.setId!,
@@ -201,6 +229,13 @@ class _ExportScreenState extends State<ExportScreen> {
           filePath = await _exportService.exportMiscellaneousToExcel(
             recordId: _miscExportMode == 'single' ? _selectedMiscRecordId : null,
           );
+        } else if (isUselessCategoryExport && _uselessExportMode == 'single') {
+          filePath = await _exportService.exportSingleMachineryToExcel(
+            _selectedSet!.setId!,
+            _selectedMachinery!.machineryId!,
+          );
+        } else if (isUselessCategoryExport && _uselessExportMode == 'complete') {
+          filePath = await _exportService.exportSchemeToExcel(_selectedScheme!.schemeId!);
         } else if (_exportScope == 'set' && _selectedSet != null) {
           if (_selectedMachinery != null) {
             filePath = await _exportService.exportSingleMachineryToExcel(
@@ -219,6 +254,13 @@ class _ExportScreenState extends State<ExportScreen> {
           filePath = await _exportService.exportMiscellaneousToCsv(
             recordId: _miscExportMode == 'single' ? _selectedMiscRecordId : null,
           );
+        } else if (isUselessCategoryExport && _uselessExportMode == 'single') {
+          filePath = await _exportService.exportSingleMachineryToCsv(
+            _selectedSet!.setId!,
+            _selectedMachinery!.machineryId!,
+          );
+        } else if (isUselessCategoryExport && _uselessExportMode == 'complete') {
+          filePath = await _exportService.exportSchemeToCsv(_selectedScheme!.schemeId!);
         } else if (_exportScope == 'set' && _selectedSet != null) {
           if (_selectedMachinery != null) {
             filePath = await _exportService.exportSingleMachineryToCsv(
@@ -280,6 +322,11 @@ class _ExportScreenState extends State<ExportScreen> {
         return '${title}_Miscellaneous_Export.$extension';
       }
       return 'Miscellaneous_Export.$extension';
+    }
+
+    if (_isUselessCategoryExport && _uselessExportMode == 'complete') {
+      final schemeName = (_selectedScheme?.schemeName ?? 'Useless_Items').replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+      return '${schemeName}_Useless_Items_Complete.$extension';
     }
 
     final machineryTypeForName = (_selectedMachinery?.machineryType.trim().isNotEmpty ?? false)
@@ -454,6 +501,7 @@ class _ExportScreenState extends State<ExportScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final isCompact = MediaQuery.of(context).size.width < 600;
+    final isUselessCategoryExport = _isUselessCategoryExport;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.navExport)),
       body: _isLoading
@@ -484,6 +532,8 @@ class _ExportScreenState extends State<ExportScreen> {
                         if (_exportScope == 'miscellaneous') {
                           _miscExportMode = 'single';
                           _selectedMiscRecordId = null;
+                        } else {
+                          _uselessExportMode = 'single';
                         }
                       }),
                     ),
@@ -533,6 +583,8 @@ class _ExportScreenState extends State<ExportScreen> {
                             if (_exportScope == 'miscellaneous') {
                               _miscExportMode = 'single';
                               _selectedMiscRecordId = null;
+                            } else {
+                              _uselessExportMode = 'single';
                             }
                           }),
                         ),
@@ -584,6 +636,33 @@ class _ExportScreenState extends State<ExportScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
+
+                  if (isUselessCategoryExport) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(l10n.exportMiscModeTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                    SegmentedButton<String>(
+                      showSelectedIcon: !isCompact,
+                      segments: [
+                        ButtonSegment(value: 'single', label: Text(l10n.exportMiscSingleItem), icon: const Icon(Icons.filter_1)),
+                        ButtonSegment(value: 'complete', label: Text(l10n.exportMiscComplete), icon: const Icon(Icons.list_alt)),
+                      ],
+                      selected: {_uselessExportMode},
+                      onSelectionChanged: (v) => setState(() {
+                        _uselessExportMode = v.first;
+                        if (_uselessExportMode == 'complete') {
+                          _exportScope = 'scheme';
+                          _selectedSet = null;
+                          _selectedMachinery = null;
+                          _machineryForSet = [];
+                        } else {
+                          _exportScope = 'set';
+                        }
+                      }),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ] else
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -633,7 +712,7 @@ class _ExportScreenState extends State<ExportScreen> {
                   ),
 
                 // Set selector (only if scope is 'set')
-                if (_exportScope == 'set') ...[
+                if (_exportScope == 'set' && (!isUselessCategoryExport || _uselessExportMode == 'single')) ...[
                   DropdownButtonFormField<SetModel>(
                     initialValue: _selectedSet,
                     decoration: InputDecoration(
@@ -662,10 +741,11 @@ class _ExportScreenState extends State<ExportScreen> {
                       border: OutlineInputBorder(),
                     ),
                     items: [
-                      DropdownMenuItem<Machinery?>(
-                        value: null,
-                        child: Text(l10n.exportAllMachineryInSet),
-                      ),
+                      if (!isUselessCategoryExport)
+                        DropdownMenuItem<Machinery?>(
+                          value: null,
+                          child: Text(l10n.exportAllMachineryInSet),
+                        ),
                       ..._machineryForSet.map(
                         (m) => DropdownMenuItem<Machinery?>(
                           value: m,

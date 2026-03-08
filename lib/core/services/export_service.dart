@@ -313,24 +313,24 @@ class ExportService {
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.all(18),
         header: (context) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Text(
               '${scheme?.schemeName ?? 'Unknown Scheme'} ${setModel.setLabel}',
-              textAlign: pw.TextAlign.center,
+              textAlign: pw.TextAlign.left,
               style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
             ),
             pw.SizedBox(height: 2),
             pw.Text(
               _excelStyleSetHeading(scheme?.schemeName ?? 'Unknown Scheme', setModel.setLabel),
-              textAlign: pw.TextAlign.center,
+              textAlign: pw.TextAlign.left,
               style: const pw.TextStyle(fontSize: 10),
             ),
             if (isUselessScheme) ...[
               pw.SizedBox(height: 2),
               pw.Text(
                 'Useless Items Transfer Report',
-                textAlign: pw.TextAlign.center,
+                textAlign: pw.TextAlign.left,
                 style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
               ),
             ],
@@ -474,6 +474,9 @@ class ExportService {
     PdfColor? background,
     pw.TextAlign align = pw.TextAlign.left,
   }) {
+    final hasArabic = _containsArabic(text);
+    final effectiveAlign = hasArabic ? pw.TextAlign.right : align;
+
     return pw.Container(
       width: width,
       padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 5),
@@ -483,11 +486,12 @@ class ExportService {
       ),
       child: pw.Text(
         text,
-        textAlign: align,
-        textDirection: _containsArabic(text) ? pw.TextDirection.rtl : pw.TextDirection.ltr,
+        textAlign: effectiveAlign,
+        textDirection: hasArabic ? pw.TextDirection.rtl : pw.TextDirection.ltr,
         style: pw.TextStyle(
           fontSize: 9,
-          font: bold ? _boldFont : _baseFont,
+          // Use Arabic font as primary when Arabic/Urdu characters are present.
+          font: hasArabic ? _arabicFont : (bold ? _boldFont : _baseFont),
           fontBold: _boldFont,
           fontFallback: _fontFallback ?? [],
           color: background != null ? PdfColors.white : PdfColors.black,

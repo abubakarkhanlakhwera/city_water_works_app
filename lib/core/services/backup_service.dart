@@ -4,10 +4,20 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
 import '../database/app_database.dart';
 
 class BackupService {
   final AppDatabase _db = AppDatabase.instance;
+
+  static const List<String> _verifiedTables = [
+    'schemes',
+    'sets',
+    'machinery',
+    'billing_entries',
+    'miscellaneous_items',
+    'miscellaneous_entries',
+  ];
 
   String _nowFormatted() {
     final now = DateTime.now();
@@ -47,8 +57,52 @@ class BackupService {
     return await getApplicationDocumentsDirectory();
   }
 
+  Future<Map<String, int>> _collectTableCounts(Database db) async {
+    final counts = <String, int>{};
+    for (final table in _verifiedTables) {
+      final result = await db.rawQuery('SELECT COUNT(*) as cnt FROM $table');
+      counts[table] = (result.first['cnt'] as int?) ?? 0;
+    }
+    return counts;
+  }
+
+  Future<void> _validateRestoredCounts(Map<String, dynamic> metadata) async {
+    final raw = metadata['table_counts'];
+    if (raw is! Map) return;
+
+    final expected = <String, int>{};
+    for (final entry in raw.entries) {
+      expected[entry.key.toString()] = int.tryParse(entry.value.toString()) ?? 0;
+    }
+
+    final db = await _db.database;
+    final actual = await _collectTableCounts(db);
+
+    final mismatches = <String>[];
+    for (final table in _verifiedTables) {
+      final e = expected[table];
+      if (e == null) continue;
+      final a = actual[table] ?? 0;
+      if (e != a) {
+        mismatches.add('$table expected=$e actual=$a');
+      }
+    }
+
+    if (mismatches.isNotEmpty) {
+      throw Exception(
+        'Backup verification failed after restore: ${mismatches.join(', ')}',
+      );
+    }
+  }
+
   /// Create a backup file (.cww = zip of DB + metadata)
   Future<String> createBackup() async {
+    // Ensure WAL changes are merged into the main DB file before backup.
+    final liveDb = await _db.database;
+    await liveDb.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+    final tableCounts = await _collectTableCounts(liveDb);
+    await _db.closeDatabase();
+
     final dbPath = await _db.databasePath;
     final dbFile = File(dbPath);
 
@@ -62,6 +116,7 @@ class BackupService {
       'schema_version': 1,
       'created_at': _nowFormatted(),
       'platform': Platform.operatingSystem,
+      'table_counts': tableCounts,
     };
 
     // Create archive
@@ -83,6 +138,9 @@ class BackupService {
     final filename = 'WaterSupplyMachineryHistory_Backup_${_nowFormatted()}.cww';
     final backupFile = File('${backupDir.path}/$filename');
     await backupFile.writeAsBytes(zipBytes!);
+
+    // Re-open DB for normal app usage after backup is created.
+    await _db.database;
 
     return backupFile.path;
   }
@@ -148,8 +206,11 @@ class BackupService {
       throw Exception('Invalid backup file: database not found');
     }
 
+    Map<String, dynamic>? metadata;
     if (metadataFile != null) {
-      final metadata = jsonDecode(utf8.decode((metadataFile.content as List<int>)));
+      metadata = Map<String, dynamic>.from(
+        jsonDecode(utf8.decode((metadataFile.content as List<int>))),
+      );
       final schemaVersion = metadata['schema_version'] ?? 1;
       // Validate schema version
       if (schemaVersion > 1) {
@@ -168,6 +229,14 @@ class BackupService {
     if (await targetFile.exists()) {
       await targetFile.delete();
     }
+    final walFile = File('$dbPath-wal');
+    if (await walFile.exists()) {
+      await walFile.delete();
+    }
+    final shmFile = File('$dbPath-shm');
+    if (await shmFile.exists()) {
+      await shmFile.delete();
+    }
 
     // Write restored DB
     final dbContent = dbBackupFile.content;
@@ -177,6 +246,10 @@ class BackupService {
 
     // Re-initialize database
     await _db.database;
+
+    if (metadata != null) {
+      await _validateRestoredCounts(metadata);
+    }
   }
 
   /// List available local backups
@@ -207,6 +280,8 @@ class BackupService {
   /// Delete all data (factory reset)
   Future<void> deleteAllData() async {
     final db = await _db.database;
+    await db.delete('miscellaneous_entries');
+    await db.delete('miscellaneous_items');
     await db.delete('billing_entries');
     await db.delete('machinery');
     await db.delete('sets');
