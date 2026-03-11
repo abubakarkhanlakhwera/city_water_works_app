@@ -568,6 +568,24 @@ class ExportService {
 
       effectiveMachineryList.addAll(remainingMachinery);
 
+      if (isUselessScheme) {
+        const typePriority = {
+          'transformer': 0,
+          'motor': 1,
+          'pump': 2,
+          'turbine': 3,
+        };
+
+        effectiveMachineryList.sort((a, b) {
+          final aType = _normalizeType(a.machineryType).toLowerCase();
+          final bType = _normalizeType(b.machineryType).toLowerCase();
+          final aRank = typePriority[aType] ?? 99;
+          final bRank = typePriority[bType] ?? 99;
+          if (aRank != bRank) return aRank.compareTo(bRank);
+          return _machineryHeaderLabel(a).compareTo(_machineryHeaderLabel(b));
+        });
+      }
+
       final entriesByMachinery = <int, List<dynamic>>{};
       int maxRows = 1;
       for (final machinery in effectiveMachineryList) {
@@ -589,6 +607,16 @@ class ExportService {
             ? effectiveMachineryList.length
             : (i + maxMachineryPerBlock);
         machineryBlocks.add(effectiveMachineryList.sublist(i, end));
+      }
+
+      if (isUselessScheme) {
+        machineryBlocks
+          ..clear()
+          ..addAll(effectiveMachineryList.map((m) => [m]));
+      }
+
+      if (isUselessScheme && sectionWidgets.isNotEmpty) {
+        sectionWidgets.add(pw.NewPage());
       }
 
       sectionWidgets.add(
@@ -621,6 +649,9 @@ class ExportService {
         final otherHeaderWidth = colWidth * perMachineryCols;
 
         if (blockIndex > 0) {
+          if (isUselessScheme) {
+            sectionWidgets.add(pw.NewPage());
+          }
           sectionWidgets.add(
             pw.Text('${setModel.setLabel} (continued)',
                 style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),

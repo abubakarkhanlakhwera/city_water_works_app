@@ -6,12 +6,16 @@ class DDMMYYYYDatePicker extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final String? Function(String?)? validator;
+  final bool showClearButton;
+  final Locale? pickerLocale;
 
   const DDMMYYYYDatePicker({
     super.key,
     required this.controller,
     this.label = 'Date (DD-MM-YYYY)',
     this.validator,
+    this.showClearButton = false,
+    this.pickerLocale,
   });
 
   @override
@@ -22,9 +26,20 @@ class DDMMYYYYDatePicker extends StatelessWidget {
         labelText: label,
         hintText: 'DD-MM-YYYY',
         prefixIcon: const Icon(Icons.calendar_today),
-        suffixIcon: IconButton(
-          icon: const Icon(Icons.date_range),
-          onPressed: () => _pickDate(context),
+        suffixIcon: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showClearButton)
+              IconButton(
+                tooltip: 'Clear date',
+                icon: const Icon(Icons.clear),
+                onPressed: () => controller.clear(),
+              ),
+            IconButton(
+              icon: const Icon(Icons.date_range),
+              onPressed: () => _pickDate(context),
+            ),
+          ],
         ),
       ),
       readOnly: true,
@@ -46,6 +61,7 @@ class DDMMYYYYDatePicker extends StatelessWidget {
 
     final picked = await showDatePicker(
       context: context,
+      locale: pickerLocale,
       initialDate: initialDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),

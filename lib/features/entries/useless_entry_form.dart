@@ -30,6 +30,28 @@ class _UselessEntryFormState extends State<UselessEntryForm> {
   bool _isSaving = false;
   bool get _isEdit => widget.entry != null;
 
+  String? _optionalDateValidator(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+
+    final v = value.trim();
+    final parts = v.split('-');
+    if (parts.length != 3) return 'Invalid date format';
+
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day == null || month == null || year == null) return 'Invalid date format';
+
+    final parsed = DateTime.tryParse(
+      '${year.toString().padLeft(4, '0')}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}',
+    );
+    if (parsed == null || parsed.day != day || parsed.month != month || parsed.year != year) {
+      return 'Invalid date format';
+    }
+
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -89,7 +111,9 @@ class _UselessEntryFormState extends State<UselessEntryForm> {
       final entryDate = _dateCtrl.text.trim().isEmpty ? _todayDDMMYYYY() : _dateCtrl.text.trim();
 
       if (_isEdit) {
-        await _dao.updateEntry(widget.entry!.copyWith(
+        await _dao.updateEntry(BillingEntry(
+          entryId: widget.entry!.entryId,
+          machineryId: widget.entry!.machineryId,
           serialNo: serialNo,
           entryDate: entryDate,
           voucherNo: null,
@@ -103,6 +127,8 @@ class _UselessEntryFormState extends State<UselessEntryForm> {
               _transferredToSchemeCtrl.text.trim().isEmpty ? null : _transferredToSchemeCtrl.text.trim(),
           remarks: _remarksCtrl.text.trim().isEmpty ? null : _remarksCtrl.text.trim(),
           notes: _remarksCtrl.text.trim().isEmpty ? null : _remarksCtrl.text.trim(),
+          createdAt: widget.entry!.createdAt,
+          updatedAt: widget.entry!.updatedAt,
         ));
       } else {
         await _dao.insertEntry(BillingEntry(
@@ -180,7 +206,9 @@ class _UselessEntryFormState extends State<UselessEntryForm> {
                     flex: 2,
                     child: DDMMYYYYDatePicker(
                       controller: _dateCtrl,
-                      label: 'Date (DD-MM-YYYY)',
+                      label: 'Date (DD/MM/YYYY)',
+                      validator: _optionalDateValidator,
+                      pickerLocale: const Locale('en', 'GB'),
                     ),
                   ),
                 ],
@@ -204,13 +232,19 @@ class _UselessEntryFormState extends State<UselessEntryForm> {
 
               DDMMYYYYDatePicker(
                 controller: _submittedToStoreDateCtrl,
-                label: 'Submitted To Store Date (DD-MM-YYYY)',
+                label: 'Submitted To Store Date (DD/MM/YYYY)',
+                validator: _optionalDateValidator,
+                showClearButton: true,
+                pickerLocale: const Locale('en', 'GB'),
               ),
               const SizedBox(height: 12),
 
               DDMMYYYYDatePicker(
                 controller: _transferDateCtrl,
-                label: 'Transfer Date (DD-MM-YYYY)',
+                label: 'Transfer Date (DD/MM/YYYY)',
+                validator: _optionalDateValidator,
+                showClearButton: true,
+                pickerLocale: const Locale('en', 'GB'),
               ),
               const SizedBox(height: 12),
 
